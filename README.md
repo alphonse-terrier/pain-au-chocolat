@@ -1,237 +1,245 @@
 # 🥐 pain-au-chocolat
 
-Où trouver le meilleur pain au chocolat de Paris — un pipeline qui récolte
-les boulangeries de Paris et leurs avis Google, puis calcule une note /10
-spécifique à la qualité du pain au chocolat (pas la note globale de la
-boulangerie), affichée sur une carte interactive.
+**Where's the best pain au chocolat in Paris?** This project scrapes every
+bakery in Paris and its Google reviews, then uses an LLM to score the
+*specific* quality of its pain au chocolat / chocolatine — not the
+bakery's overall rating — and shows it all on an interactive map.
+
+<p align="center">
+  <img alt="pipeline" src="https://img.shields.io/badge/pipeline-discover%20%E2%86%92%20reviews%20%E2%86%92%20load%20%E2%86%92%20score%20%E2%86%92%20map-6b4226">
+</p>
+
+## Why bother separating the two?
+
+Google's overall rating conflates everything — service, price, decor, that
+one croissant that changed your life. A 1★ review is often just "€3.90 for
+a chocolatine, are you kidding me" — not a comment on how it tastes. This
+pipeline reads reviews that specifically mention pain au chocolat /
+chocolatine, asks an LLM to judge *just* the taste/quality sentiment, and
+throws out anything that's really about price or service.
+
+## How it works
 
 ```
 pac discover  →  pac reviews  →  pac load  →  pac score  →  streamlit run app.py
- (Places API)    (Playwright)     (DuckDB)     (OpenRouter)    (carte + classement)
+ (Places API)    (Playwright)     (DuckDB)     (OpenRouter)    (map + leaderboard)
 ```
 
-Chaque étape est indépendante, idempotente, et écrit dans `data/pac.duckdb`.
-On peut relancer n'importe laquelle sans casser les autres, et l'app lit
-toujours l'état courant de la base — pas besoin d'attendre que tout le
-pipeline soit "fini" pour regarder les résultats.
+Every step is independent and idempotent, writing into a single
+`data/pac.duckdb` file. Re-run any step on its own without breaking the
+others, and the app always reads whatever is currently in the database —
+no need to wait for the full pipeline to finish before checking results.
 
 ---
 
-## 1. Installation
-
-Prérequis : Python 3.12+, [uv](https://docs.astral.sh/uv/).
+## Quickstart
 
 ```bash
 git clone <repo>
 cd pain-au-chocolat
-uv sync                          # installe toutes les dépendances
-uv run playwright install chromium   # navigateur headless pour la phase avis
+uv sync                              # install dependencies
+uv run playwright install chromium   # headless browser for the reviews step
+
+cp .env.example .env                 # then fill in your API keys, see below
+uv run pytest tests/ -q              # sanity check: 20 tests, no network needed
+
+uv run pac discover --arrondissement 12 --limit 50   # try it on one district first
+uv run pac reviews --limit 20 --max-reviews-per-place 50
+uv run pac load
+uv run pac score --dry-run           # see how much this would cost before spending anything
+uv run pac score
+uv run streamlit run app.py          # open http://localhost:8501
 ```
 
-Copier le fichier d'exemple et renseigner les clés :
+Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 
-```bash
-cp .env.example .env
-```
+### API keys
 
-| Variable | Requise pour | Où l'obtenir |
+| Variable | Needed for | Get it from |
 |---|---|---|
-| `GOOGLE_MAPS_API_KEY` | `pac discover` | [Google Cloud Console](https://console.cloud.google.com) → activer **Places API (New)** → Credentials → Create API key. Facturation à activer sur le projet (voir § Coûts). |
+| `GOOGLE_MAPS_API_KEY` | `pac discover` | [Google Cloud Console](https://console.cloud.google.com) → enable **Places API (New)** → Credentials → Create API key. Billing must be enabled on the project (see Costs below). |
 | `OPENROUTER_API_KEY` | `pac score` | [openrouter.ai/keys](https://openrouter.ai/keys) |
 
-`pac reviews` et `pac load` ne nécessitent **aucune clé** (pas d'API
-payante — le crawl des avis se fait via un navigateur headless).
-
-Vérifier que tout est en place :
-
-```bash
-uv run pac --help
-uv run pytest tests/ -q     # 20 tests, doivent tous passer, 0 dépendance réseau
-```
+`pac reviews` and `pac load` need **no key at all** — no paid API, reviews
+are crawled through a headless browser.
 
 ---
 
-## 2. Le pipeline, étape par étape
+## The pipeline, step by step
 
-### 2.1 `pac discover` — trouver les boulangeries
+### 1. `pac discover` — find the bakeries
 
-Interroge l'API Google Places en pavant Paris (une seule requête ne
-renvoie que 20 résultats max, sans pagination — le pavage compense cette
-limite avec subdivision automatique des zones denses).
+Queries the Google Places API by tiling Paris into a grid (a single
+request only returns up to 20 results with no pagination, so the grid
+auto-subdivides dense areas to work around that).
 
 ```bash
-# Toujours commencer par un dry-run : affiche le nombre de cellules/appels
-# prévus, sans toucher à l'API (donc sans rien coûter).
-uv run pac discover --dry-run
-
-# Test rapide sur un seul arrondissement avant de lancer tout Paris
-uv run pac discover --arrondissement 12 --limit 50
-
-# Paris entier
-uv run pac discover
+uv run pac discover --dry-run              # always start here: shows the plan, costs nothing
+uv run pac discover --arrondissement 12 --limit 50   # quick test on one district
+uv run pac discover                        # the whole city
 ```
 
-| Option | Effet |
+| Option | Effect |
 |---|---|
-| `--arrondissement N` (1-20) | Restreint à un seul arrondissement (bbox réelle, pas une approximation) |
-| `--limit N` | Plafonne le nombre de lieux gardés |
-| `--dry-run` | N'appelle pas l'API, affiche juste le plan de pavage |
-| `--cell-size-m` | Taille de cellule du pavage (défaut 500m) |
-| `--strict-bakery` / `--no-strict-bakery` | Ne garde que `primaryType == "bakery"` (défaut **activé** — sans ça, ~30% de bruit type supermarché/restaurant qui a juste "bakery" en type secondaire) |
+| `--arrondissement N` (1-20) | Restrict to a single district (real bounding box, not eyeballed) |
+| `--limit N` | Cap the number of places kept |
+| `--dry-run` | No API calls — just prints the tiling plan |
+| `--cell-size-m` | Grid cell size (default 500m) |
+| `--strict-bakery` / `--no-strict-bakery` | Keep only `primaryType == "bakery"` (default **on** — otherwise ~30% noise from supermarkets/restaurants that list "bakery" as a secondary type) |
 
-Écrit dans `data/raw/places/places.jsonl`.
+Writes to `data/raw/places/places.jsonl`.
 
-**Coût** : tarif officiel Google actuel — **32 $/1000 requêtes Nearby
-Search**, avec **5000 requêtes gratuites par mois**. Paris entier nécessite
-de l'ordre de 700 à 2900 appels selon la densité des zones (subdivisions) —
-largement dans le palier gratuit dans l'immense majorité des cas. Toujours
-vérifier `--dry-run` avant un run complet et surveiller *Facturation →
-Budgets et alertes* dans la console Google Cloud.
+> **💸 Cost**: current Google pricing is **$32 per 1000 Nearby Search
+> requests**, with **5000 free requests/month**. Covering all of Paris
+> takes roughly 700–2900 calls depending on how dense the subdivided areas
+> are — comfortably inside the free tier in most cases. Always check
+> `--dry-run` before a full run, and keep an eye on *Billing → Budgets &
+> alerts* in Google Cloud Console.
 
-### 2.2 `pac reviews` — récolter les avis
+### 2. `pac reviews` — crawl the reviews
 
-Ouvre un navigateur headless par lieu et fait défiler le panneau d'avis
-Google Maps (l'API officielle des avis limite à 5 avis/lieu — insuffisant
-ici ; voir § Comment ça marche pour le pourquoi de cette approche).
+Opens one headless browser per place and scrolls through the Google Maps
+reviews panel. (The official reviews API caps out at 5 reviews per place —
+nowhere near enough; see **How it works internally** below for why this
+needs a browser at all.)
 
 ```bash
-# Sur les lieux déjà découverts (data/raw/places/places.jsonl)
-uv run pac reviews --limit 20 --max-reviews-per-place 50   # test rapide
+uv run pac reviews --limit 20 --max-reviews-per-place 50   # quick test
+uv run pac reviews                                          # full run
 
-uv run pac reviews                                          # run complet
-
-# Ou sur une liste de place_id précise, sans passer par discover
+# or target specific places directly, skipping discover
 uv run pac reviews --place-ids "ChIJ...,ChIJ..." --max-reviews-per-place 100
 ```
 
-| Option | Effet |
+| Option | Effect |
 |---|---|
-| `--place-ids "id1,id2,..."` | Traite ces lieux précis plutôt que `places.jsonl` |
-| `--limit N` | Plafonne le nombre de lieux traités |
-| `--max-reviews-per-place N` | Défaut 500 ; 0 = illimité |
-| `--workers N` | Contextes Playwright en parallèle (défaut 8) |
+| `--place-ids "id1,id2,..."` | Process these specific places instead of `places.jsonl` |
+| `--limit N` | Cap the number of places processed |
+| `--max-reviews-per-place N` | Default 500; 0 = unlimited |
+| `--workers N` | Parallel Playwright contexts (default 8) |
 
-Écrit dans `data/raw/reviews/<place_id>.jsonl`. Chaque lieu affiche son
-statut : `ok (N avis)` ou `no_reviews_tab` (avec reprise automatique sur 3
-tentatives — la plupart des `no_reviews_tab` restants sont des lieux qui
-n'ont simplement aucun avis, pas un bug).
+Writes to `data/raw/reviews/<place_id>.jsonl`. Each place reports its
+status: `ok (N reviews)` or `no_reviews_tab` (auto-retried up to 3 times —
+most remaining `no_reviews_tab` results are just places with genuinely no
+reviews, not a bug).
 
-**Temps** : mesuré en réel, ~35-40s pour 100 avis, jusqu'à ~120s pour un
-lieu à 500 avis (cas extrême, la plupart des lieux ont beaucoup moins). Avec
-8 workers en parallèle sur ~1000-1700 lieux : de l'ordre de quelques heures,
-pas besoin de surveiller — relancer la commande plus tard reprend
-naturellement là où c'est resté (idempotent par lieu).
+> **⏱ Timing**: measured in practice, ~35-40s per 100 reviews, up to ~120s
+> for a place with the full 500 (an extreme case — most places have far
+> fewer). With 8 parallel workers over ~1000-1700 places, expect on the
+> order of a few hours — no need to babysit it, since re-running the
+> command later just picks up where it left off (idempotent per place).
 
-**Fragilité connue** : ce crawl s'appuie sur le comportement observé de la
-page Google Maps, pas une API stable documentée. Si Google change son
-interface, `_open_reviews_tab` (`src/pac/reviews.py`) est le premier
-endroit à regarder.
+> **⚠️ Known fragility**: this crawl relies on Google Maps' observed page
+> behavior, not a documented stable API. If Google changes its UI,
+> `_open_reviews_tab` in `src/pac/reviews.py` is the first place to look.
 
-### 2.3 `pac load` — charger dans DuckDB
+### 3. `pac load` — load into DuckDB
 
 ```bash
 uv run pac load
-uv run pac stats     # aperçu rapide : nb lieux, nb avis, % avec texte extrait
+uv run pac stats     # quick overview: place count, review count, % with extracted text
 ```
 
-Lit tous les `.jsonl` sous `data/raw/` et les insère dans
-`data/pac.duckdb` (`ON CONFLICT DO NOTHING` — rejouable sans créer de
-doublons). C'est la seule commande qui écrit dans la base ; l'app Streamlit
-et les requêtes d'exploration se font toujours en lecture seule.
+Reads every `.jsonl` file under `data/raw/` and inserts it into
+`data/pac.duckdb` (`ON CONFLICT DO NOTHING` — safe to replay without
+duplicating anything). This is the only command that writes to the
+database; the Streamlit app and any exploratory queries are always
+read-only.
 
-### 2.4 `pac score` — noter la qualité du pain au chocolat
+### 4. `pac score` — rate the pain au chocolat
 
 ```bash
-uv run pac score --dry-run   # combien de mentions seraient classifiées, sans appeler l'API
-uv run pac score             # classification réelle + agrégation + mini leaderboard
+uv run pac score --dry-run   # how many mentions would be classified, no API calls
+uv run pac score             # real classification + aggregation + a quick leaderboard
 ```
 
-| Option | Effet |
+| Option | Effect |
 |---|---|
-| `--dry-run` | N'appelle pas l'API, affiche juste le nombre de mentions en attente |
-| `--workers N` | Concurrence des appels LLM (défaut 8) |
+| `--dry-run` | No API calls — just shows how many mentions are pending |
+| `--workers N` | Concurrency for LLM calls (default 8) |
 
-Idempotent par avis : relancer après un nouveau `pac reviews` + `pac load`
-ne classifie que le delta. Voir § Comment ça marche pour le détail du
-calcul.
+Idempotent per review: re-running after a fresh `pac reviews` + `pac load`
+only classifies the new delta. See **How the score is computed** below for
+the full method.
 
-### 2.5 L'application
+### 5. The app
 
 ```bash
 uv run streamlit run app.py
 ```
 
-Ouvre `http://localhost:8501` — carte de Paris avec toutes les
-boulangeries (colorées par score, gris si pas encore de mentions
-pain-au-chocolat), popup de détail au clic, onglet Classement (export CSV),
-onglet Méthodologie. Se relit en direct sur `data/pac.duckdb` — pas besoin
-de relancer l'app quand le pipeline continue de tourner en tâche de fond,
-juste cliquer "🔄 Actualiser les données".
+Opens `http://localhost:8501` — a map of Paris with every bakery (colored
+by score, gray if it has no pain-au-chocolat mentions yet), a detail popup
+on click, a Leaderboard tab (CSV export), and a Methodology tab. It reads
+`data/pac.duckdb` live, so you don't need to restart the app while the
+pipeline keeps running in the background — just click "🔄 Refresh data".
 
 ---
 
-## 3. Comment ça marche (le nécessaire pour comprendre le code)
+## How it works internally
 
-**Pourquoi Playwright et pas juste l'API Places pour les avis ?**
-L'API officielle Places (New) plafonne à 5 avis par lieu — insuffisant.
-Les endpoints non-officiels historiquement documentés
-(`listugcposts`, `GetLocalBoqProxy`) sont obsolètes. Le protocole actuel de
-Google (`MapsUgcPostService.ListUgcPosts` via `batchexecute`) refuse d'être
-rejoué à la main même avec la bonne session — il faut laisser la vraie page
-déclencher elle-même ses requêtes en scrollant, et les intercepter
-passivement. Toute cette fragilité est isolée dans `src/pac/protocol.py`
-(décodage bas niveau) et `src/pac/parse.py` (extraction des champs) —
-c'est là qu'il faut regarder si Google change son format.
+**Why Playwright instead of just the Places API for reviews?**
+The official Places API (New) caps out at 5 reviews per place — not
+enough. The historically-documented unofficial endpoints (`listugcposts`,
+`GetLocalBoqProxy`) are dead. Google's current protocol
+(`MapsUgcPostService.ListUgcPosts` via `batchexecute`) refuses to be
+replayed by hand even with a valid session — the real page has to trigger
+its own requests by scrolling, which we then intercept passively. All of
+that fragility is isolated in `src/pac/protocol.py` (low-level decoding)
+and `src/pac/parse.py` (field extraction) — that's where to look if Google
+changes its format.
 
-**Comment le score /10 est calculé** (`src/pac/score.py`) :
-1. Les avis mentionnant "pain au chocolat" / "chocolatine" (et variantes)
-   sont repérés par mot-clé — pas "chocolat" seul, trop bruyant.
-2. Un LLM (OpenRouter) juge si la mention parle vraiment du **goût/qualité**
-   de la pâtisserie ou seulement de son **prix** — piège réel trouvé dans
-   les données (ex. avis 1★ qui se plaint du prix d'une chocolatine
-   par ailleurs décrite comme excellente). Les mentions "prix" sont
-   exclues, pas comptées comme négatives.
-3. Pondération par crédibilité du contributeur (log du nb d'avis postés,
-   plafonné) et par récence (décroissance exponentielle).
-4. Agrégation en moyenne pondérée, avec un léger lissage vers la moyenne
-   *parisienne* des mentions (pas vers la note Google du lieu lui-même —
-   une boulangerie adorée peut avoir un mauvais pain au chocolat).
-5. Une passe de vérification ciblée repasse par un second modèle plus
-   capable les mentions où le sentiment contredit fortement la note de
-   l'avis — sans jamais trancher en faveur de cette note (le second avis
-   fait foi, indépendamment).
-6. Zéro mention pertinente ⇒ `score_10 = NULL` (pas de valeur inventée).
+**How the /10 score is computed** (`src/pac/score.py`):
+1. Reviews mentioning "pain au chocolat" / "chocolatine" (and spelling
+   variants) are found by keyword — not "chocolat" alone, which would be
+   too noisy.
+2. An LLM (via OpenRouter) judges whether the mention is actually about
+   the pastry's **taste/quality** or just its **price** — a real trap
+   found in the data (e.g. a 1★ review complaining about the price of a
+   chocolatine it otherwise describes as excellent). Price complaints are
+   excluded entirely, not counted as negative.
+3. Mentions are weighted by reviewer credibility (log of review count,
+   capped) and by recency (exponential decay).
+4. Aggregated as a weighted average, with light shrinkage toward the
+   *Paris-wide* average of all mentions — never toward that bakery's own
+   Google rating (a beloved bakery can still have a mediocre pain au
+   chocolat).
+5. A targeted verification pass re-checks, with a second and stronger
+   model, any mention where the sentiment strongly disagrees with the
+   review's overall rating — without ever deferring to that rating (the
+   second opinion stands on its own).
+6. Zero relevant mentions ⇒ `score_10 = NULL` — never a made-up default.
 
 ---
 
-## 4. Structure du projet
+## Project structure
 
 ```
 src/pac/
-  config.py     # Settings (.env), bbox Paris + arrondissements
-  grid.py       # pavage quadtree pour Nearby Search
-  discover.py   # phase 1 : Places API
-  protocol.py   # décodage bas niveau du protocole Google Maps (fragile, isolé)
-  parse.py      # extraction des champs d'un avis brut (fragile, isolé)
-  reviews.py    # phase 2 : crawl Playwright
-  store.py      # schéma DuckDB + chargement des JSONL
-  llm.py        # client OpenRouter minimal
-  score.py      # extraction mentions -> classification -> agrégation
+  config.py     # settings (.env), Paris bbox + district boundaries
+  grid.py       # quadtree tiling for Nearby Search
+  discover.py   # phase 1: Places API
+  protocol.py   # low-level Google Maps protocol decoding (fragile, isolated)
+  parse.py      # raw review field extraction (fragile, isolated)
+  reviews.py    # phase 2: Playwright crawl
+  store.py      # DuckDB schema + JSONL loading
+  llm.py        # minimal OpenRouter client
+  score.py      # mention extraction -> classification -> aggregation
   cli.py        # `pac discover|reviews|load|score|stats`
-  webapp/       # theme.py, data.py, map_view.py -- logique de app.py
-app.py          # point d'entrée Streamlit
-tests/          # pytest, fixtures réelles capturées en direct
-spikes/         # scripts de diagnostic ponctuels (pas dans le pipeline)
-data/           # généré, jamais commité (voir .gitignore)
+  webapp/       # theme.py, data.py, map_view.py -- app.py's logic
+app.py          # Streamlit entry point
+tests/          # pytest, fixtures captured from real data
+spikes/         # one-off diagnostic scripts (not part of the pipeline)
+data/           # generated, never committed (see .gitignore)
 ```
 
-## 5. Dépannage rapide
+## Troubleshooting
 
-| Symptôme | Cause probable |
+| Symptom | Likely cause |
 |---|---|
-| `pac discover` échoue avec une erreur d'auth | `GOOGLE_MAPS_API_KEY` absente/invalide dans `.env`, ou API "Places API (New)" pas activée sur le projet Google Cloud |
-| `pac score` : `OPENROUTER_API_KEY manquant` | Vérifier le nom exact de la variable dans `.env` (pas de faute de frappe type `OPENROUTER_API_KAY`) |
-| Beaucoup de `no_reviews_tab` | Normal à ~10-15% (lieux sans avis réels) ; si c'est nettement plus, Google a peut-être changé son interface — vérifier `_open_reviews_tab` dans `reviews.py` |
-| L'app Streamlit affiche "n'existe pas encore" | Lancer `pac load` au moins une fois |
-| `duckdb.Error` au lancement de l'app | La base est momentanément verrouillée par un `pac load`/`pac score` en cours en tâche de fond — réessayer dans quelques secondes |
-| L'app ne se met pas à jour après un nouveau crawl | Cliquer "🔄 Actualiser les données" (cache de 60s) |
+| `pac discover` fails with an auth error | `GOOGLE_MAPS_API_KEY` missing/invalid in `.env`, or "Places API (New)" not enabled on the Google Cloud project |
+| `pac score`: `OPENROUTER_API_KEY manquant` | Double-check the exact variable name in `.env` (typos like `OPENROUTER_API_KAY` happen) |
+| Lots of `no_reviews_tab` | Normal at ~10-15% (places with genuinely no reviews); if it's much higher, Google may have changed its UI — check `_open_reviews_tab` in `reviews.py` |
+| Streamlit app says data "doesn't exist yet" | Run `pac load` at least once |
+| `duckdb.Error` on app startup | The database is briefly locked by a `pac load`/`pac score` running in the background — retry in a few seconds |
+| App doesn't reflect a new crawl | Click "🔄 Refresh data" (60s cache) |
