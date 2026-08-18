@@ -128,13 +128,15 @@ def classify_mentions(con: duckdb.DuckDBPyConnection, workers: int, model: str) 
 
     Idempotent : ne reclassifie jamais un review_id déjà présent dans
     pac_mentions -- relancer après un nouveau `pac reviews` ne coûte que le
-    delta de nouvelles mentions.
+    delta de nouvelles mentions. Chaque résultat est inséré dès qu'il arrive
+    (pas à la toute fin) : un Ctrl+C ou un crash en cours de route ne perd
+    donc que les requêtes encore en vol, jamais le travail déjà payé et reçu.
     """
     pending = _pending_mentions(con)
     if not pending:
         return 0
 
-    results = []
+    n_done = 0
     with httpx.Client() as client:
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
             futures = [
@@ -146,21 +148,18 @@ def classify_mentions(con: duckdb.DuckDBPyConnection, workers: int, model: str) 
                 total=len(futures),
                 description="classification LLM",
             ):
-                results.append(f.result())
+                r = f.result()
+                con.execute(
+                    """
+                    INSERT INTO pac_mentions (review_id, place_id, relevant, sentiment, reason, model, classified_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (review_id) DO NOTHING
+                    """,
+                    [r["review_id"], r["place_id"], r["relevant"], r["sentiment"], r["reason"], model, datetime.now(timezone.utc)],
+                )
+                n_done += 1
 
-    classified_at = datetime.now(timezone.utc)
-    con.executemany(
-        """
-        INSERT INTO pac_mentions (review_id, place_id, relevant, sentiment, reason, model, classified_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT (review_id) DO NOTHING
-        """,
-        [
-            (r["review_id"], r["place_id"], r["relevant"], r["sentiment"], r["reason"], model, classified_at)
-            for r in results
-        ],
-    )
-    return len(results)
+    return n_done
 
 
 # Seuil de désaccord note/sentiment déclenchant une double-vérification
@@ -193,12 +192,16 @@ def verify_anomalies(con: duckdb.DuckDBPyConnection, workers: int, model: str) -
     capable) les mentions où le sentiment contredit fortement la note
     globale de l'avis -- pas pour trancher vers la note (cf. docstring de
     ANOMALY_THRESHOLD), mais pour attraper les vraies erreurs de lecture du
-    premier modèle via un second avis indépendant sur le MÊME texte."""
+    premier modèle via un second avis indépendant sur le MÊME texte.
+
+    Comme classify_mentions, chaque résultat est appliqué dès qu'il arrive :
+    un Ctrl+C en cours de route ne perd que les vérifications encore en
+    vol, pas celles déjà reçues."""
     pending = _pending_anomalies(con)
     if not pending:
         return 0
 
-    results = []
+    n_updated = 0
     with httpx.Client() as client:
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
             futures = [
@@ -210,25 +213,23 @@ def verify_anomalies(con: duckdb.DuckDBPyConnection, workers: int, model: str) -
                 total=len(futures),
                 description="vérification des anomalies",
             ):
-                results.append(f.result())
-
-    n_updated = 0
-    for r in results:
-        if r["failed"]:
-            # Échec technique du second modèle : on NE TOUCHE PAS à la
-            # classification existante (verified reste false, elle sera
-            # retentée au prochain `pac score`) -- plutôt que d'écraser une
-            # classification valide par un résultat par défaut inventé.
-            continue
-        con.execute(
-            """
-            UPDATE pac_mentions
-            SET relevant = ?, sentiment = ?, reason = ?, model = ?, verified = true
-            WHERE review_id = ?
-            """,
-            [r["relevant"], r["sentiment"], r["reason"], model, r["review_id"]],
-        )
-        n_updated += 1
+                r = f.result()
+                if r["failed"]:
+                    # Échec technique du second modèle : on NE TOUCHE PAS à
+                    # la classification existante (verified reste false,
+                    # elle sera retentée au prochain `pac score`) -- plutôt
+                    # que d'écraser une classification valide par un
+                    # résultat par défaut inventé.
+                    continue
+                con.execute(
+                    """
+                    UPDATE pac_mentions
+                    SET relevant = ?, sentiment = ?, reason = ?, model = ?, verified = true
+                    WHERE review_id = ?
+                    """,
+                    [r["relevant"], r["sentiment"], r["reason"], model, r["review_id"]],
+                )
+                n_updated += 1
     return n_updated
 
 
