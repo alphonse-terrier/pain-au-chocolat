@@ -1,0 +1,34 @@
+[project]
+name = "pac"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb>=1.5.5",
+    "folium>=0.20.0",
+    "httpx>=0.28.1",
+    "pandas>=3.0.5",
+    "playwright>=1.62.0",
+    "pydantic-settings>=2.15.0",
+    "python-dotenv>=1.2.3",
+    "rich>=15.0.0",
+    "streamlit>=1.61.1",
+    "streamlit-folium>=0.27.4",
+    "tenacity>=9.1.4",
+    "typer>=0.27.1",
+]
+
+[project.scripts]
+pac = "pac.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pac"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
