@@ -100,7 +100,16 @@ def _classify_one(
         sentiment = max(-1.0, min(1.0, sentiment))
         reason = str(result.get("reason", ""))[:500]
         failed = False
-    except (LLMError, ValueError, TypeError) as exc:
+    except (LLMError, ValueError, TypeError, httpx.HTTPError) as exc:
+        # httpx.HTTPError couvre aussi les erreurs réseau brutes (connexion
+        # coupée par une mise en veille/un verrouillage, DNS, etc.), pas
+        # seulement les erreurs déjà transformées en LLMError -- sans ça,
+        # une exception réseau remonte non rattrapée jusqu'au `f.result()`
+        # de l'appelant, qui casse le `with ThreadPoolExecutor(...)` en plein
+        # milieu : sa sortie via exception attend quand même que TOUS les
+        # futures déjà soumis se terminent (shutdown(wait=True)) avant de
+        # laisser remonter l'erreur -- des heures de blocage silencieux, la
+        # barre de progression arrêtée, pour ce qui ressemble à un freeze.
         # On n'invente pas un sentiment par défaut : une mention qu'on n'a
         # pas pu classifier est marquée non pertinente plutôt que de
         # polluer l'agrégation avec une valeur neutre inventée. `failed`
