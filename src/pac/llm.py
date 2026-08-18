@@ -72,6 +72,12 @@ def classify_json(
             ],
             "response_format": {"type": "json_object"},
             "temperature": 0,
+            # La classification (relevant/sentiment/reason) est une décision
+            # bornée sur un court passage, pas un problème à plusieurs étapes
+            # -- le reasoning n'améliore rien ici, il ajoute juste des tokens
+            # de chain-of-thought qui ralentissent chaque appel (mesuré : 2x
+            # plus lent sur deepseek-v4-flash) sans gain de qualité observé.
+            "reasoning": {"enabled": False},
         },
         timeout=30,
     )
