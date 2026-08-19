@@ -9,6 +9,12 @@ DATA_DIR = ROOT_DIR / "data"
 RAW_PLACES_DIR = DATA_DIR / "raw" / "places"
 RAW_REVIEWS_DIR = DATA_DIR / "raw" / "reviews"
 DUCKDB_PATH = DATA_DIR / "pac.duckdb"
+# Base allégée, dédiée à l'app Streamlit (cf. pac.cli.export_app_db) --
+# séparée de DUCKDB_PATH (la base complète du pipeline discover/reviews/
+# score) pour que l'app déployée n'embarque pas les ~90% d'avis bruts
+# qu'elle ne lit jamais (cf. discussion : seuls les avis liés à une mention
+# pain-au-chocolat/viennoiserie sont affichés).
+APP_DUCKDB_PATH = DATA_DIR / "pac_app.duckdb"
 
 # Bbox large de Paris intra-muros (utilisée par grid.py pour le pavage).
 PARIS_BBOX = {

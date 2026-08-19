@@ -8,6 +8,7 @@ from playwright.sync_api import sync_playwright
 
 from pac.config import RAW_PLACES_DIR, settings
 from pac.discover import discover_bakeries
+from pac.export_app_db import export_app_db
 from pac.reviews import crawl_place_reviews
 from pac.score import classify_mentions, compute_scores, extract_mentions, leaderboard, verify_anomalies
 from pac.store import get_connection, load_places, load_reviews
@@ -149,6 +150,15 @@ def score(
     typer.echo("\nÀ éviter (confiance haute uniquement) :")
     for name, s, n, conf in bottom:
         typer.echo(f"  {s:.1f}/10  {name}  ({n} avis, confiance={conf})")
+
+
+@app.command(name="export-app-db")
+def export_app_db_command():
+    """Régénère data/pac_app.duckdb (base allégée dédiée au Streamlit,
+    séparée de la base complète du pipeline) -- à relancer après chaque
+    `pac score` pour que l'app affiche les données à jour."""
+    counts = export_app_db()
+    typer.echo(f"pac_app.duckdb régénérée : {counts}")
 
 
 if __name__ == "__main__":
