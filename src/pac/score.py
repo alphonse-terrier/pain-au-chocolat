@@ -106,7 +106,14 @@ def extract_mentions(con: duckdb.DuckDBPyConnection) -> int:
     return con.execute("SELECT count(*) FROM pac_mentions_raw").fetchone()[0]
 
 
-def _pending_mentions(con: duckdb.DuckDBPyConnection) -> list[tuple]:
+def _pending_mentions(con: duckdb.DuckDBPyConnection, reclassify: bool = False) -> list[tuple]:
+    if reclassify:
+        # Reclassifie TOUT (utilisé pour faire rétroagir un nouveau champ de
+        # sortie LLM -- ex. signal_type/aspect/llm_confidence -- sur les
+        # mentions déjà classifiées avant son introduction, cf. plan).
+        return con.execute(
+            "SELECT review_id, place_id, text, matched_term FROM pac_mentions_raw"
+        ).fetchall()
     return con.execute(
         """
         SELECT m.review_id, m.place_id, m.text, m.matched_term
@@ -199,16 +206,27 @@ def _classify_one(
     }
 
 
-def classify_mentions(con: duckdb.DuckDBPyConnection, workers: int, model: str) -> int:
+def classify_mentions(
+    con: duckdb.DuckDBPyConnection, workers: int, model: str, reclassify: bool = False
+) -> int:
     """Étage 2 : classification LLM des mentions pas encore traitées.
 
-    Idempotent : ne reclassifie jamais un review_id déjà présent dans
-    pac_mentions -- relancer après un nouveau `pac reviews` ne coûte que le
-    delta de nouvelles mentions. Chaque résultat est inséré dès qu'il arrive
-    (pas à la toute fin) : un Ctrl+C ou un crash en cours de route ne perd
-    donc que les requêtes encore en vol, jamais le travail déjà payé et reçu.
-    """
-    pending = _pending_mentions(con)
+    Idempotent par défaut : ne reclassifie jamais un review_id déjà présent
+    dans pac_mentions -- relancer après un nouveau `pac reviews` ne coûte
+    que le delta de nouvelles mentions. Chaque résultat est inséré dès
+    qu'il arrive (pas à la toute fin) : un Ctrl+C ou un crash en cours de
+    route ne perd donc que les requêtes encore en vol, jamais le travail
+    déjà payé et reçu.
+
+    reclassify=True force la reclassification de TOUTES les mentions,
+    écrasant leur résultat existant (`pac reclassify` en CLI) -- utile pour
+    faire rétroagir un nouveau champ de sortie sur les mentions classifiées
+    avant son introduction. Remet aussi `verified` à false : les mentions
+    qui avaient été repassées par verify_anomalies seront à nouveau
+    sélectionnées si le désaccord persiste après la reclassification,
+    plutôt que de rester marquées "vérifiées" sur un résultat qui vient
+    d'être remplacé."""
+    pending = _pending_mentions(con, reclassify=reclassify)
     if not pending:
         return 0
 
@@ -229,9 +247,19 @@ def classify_mentions(con: duckdb.DuckDBPyConnection, workers: int, model: str) 
                     """
                     INSERT INTO pac_mentions
                         (review_id, place_id, relevant, appreciated, sentiment, signal_type,
-                         aspect, llm_confidence, reason, model, classified_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT (review_id) DO NOTHING
+                         aspect, llm_confidence, reason, model, classified_at, verified)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, false)
+                    ON CONFLICT (review_id) DO UPDATE SET
+                        relevant = excluded.relevant,
+                        appreciated = excluded.appreciated,
+                        sentiment = excluded.sentiment,
+                        signal_type = excluded.signal_type,
+                        aspect = excluded.aspect,
+                        llm_confidence = excluded.llm_confidence,
+                        reason = excluded.reason,
+                        model = excluded.model,
+                        classified_at = excluded.classified_at,
+                        verified = false
                     """,
                     [
                         r["review_id"], r["place_id"], r["relevant"], r["appreciated"],

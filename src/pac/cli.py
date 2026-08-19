@@ -152,6 +152,42 @@ def score(
         typer.echo(f"  {s:.1f}/10  {name}  ({n} avis, confiance={conf})")
 
 
+@app.command()
+def reclassify(
+    dry_run: bool = typer.Option(
+        False, help="N'affiche que le nombre de mentions concernées, sans appeler l'API"
+    ),
+    workers: int = typer.Option(None, help="Concurrence des appels de classification LLM"),
+):
+    """Reclassifie TOUTES les mentions déjà extraites (écrase leur résultat
+    existant), pour faire rétroagir un nouveau champ de sortie LLM (ex.
+    signal_type/aspect/llm_confidence) sur des mentions classifiées avant
+    son introduction. Coûte autant qu'un premier `pac score` complet --
+    contrairement à `pac score`, PAS idempotent par delta : c'est le point.
+    Recalcule aussi les scores à la fin. Pense à relancer
+    `pac export-app-db` ensuite pour que l'app affiche le résultat."""
+    con = get_connection()
+
+    n_total = con.execute("SELECT count(*) FROM pac_mentions_raw").fetchone()[0]
+    typer.echo(f"{n_total} mention(s) à reclassifier (TOUTES, pas seulement les nouvelles).")
+
+    if dry_run:
+        return
+
+    n_workers = workers or settings.score_workers
+    n_classified = classify_mentions(
+        con, workers=n_workers, model=settings.openrouter_model, reclassify=True
+    )
+    typer.echo(f"{n_classified} mention(s) reclassifiée(s).")
+
+    n_verified = verify_anomalies(con, workers=n_workers, model=settings.openrouter_verify_model)
+    typer.echo(f"{n_verified} anomalie(s) désaccord note/sentiment re-vérifiée(s) "
+               f"(modèle {settings.openrouter_verify_model}).")
+
+    n_scored = compute_scores(con)
+    typer.echo(f"{n_scored} lieu(x) avec un score_10 recalculé.")
+
+
 @app.command(name="export-app-db")
 def export_app_db_command():
     """Régénère data/pac_app.duckdb (base allégée dédiée au Streamlit,
