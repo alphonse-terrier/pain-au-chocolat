@@ -149,7 +149,18 @@ def build_map(marker_specs: list[dict], **map_kwargs) -> folium.Map:
     folium.Map tout neuf à chaque appel (léger : la partie coûteuse, le
     calcul des popups/couleurs, est déjà faite).
     map_kwargs : center=(lat, lon), zoom=... pour recentrer la carte (ex.
-    sélection "Aller à" dans la barre latérale)."""
+    sélection "Aller à" dans la barre latérale).
+
+    MarkerCluster (folium.CircleMarker + folium.Popup un par un), PAS
+    FastMarkerCluster (marqueurs créés en JS depuis un tableau de données,
+    essayé pour le gain de vitesse de rendu -- cf. plan performance) : ça
+    cassait la détection de clic de streamlit-folium en pratique (le
+    panneau de détail ne se mettait plus à jour), malgré la théorie selon
+    laquelle le mécanisme d'écoute au niveau du groupe Leaflet aurait dû
+    fonctionner pareil. Vérifié seulement en conditions réelles (navigateur),
+    pas reproductible avec les outils de test disponibles ici -- rester sur
+    l'approche qui marche.
+    """
     location = map_kwargs.get("center", PARIS_CENTER)
     zoom = map_kwargs.get("zoom", 12)
     fmap = folium.Map(location=location, zoom_start=zoom, tiles="CartoDB positron")
