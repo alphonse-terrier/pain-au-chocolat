@@ -18,7 +18,7 @@ from streamlit_folium import st_folium
 
 from pac.webapp.data import (
     DatabaseUnavailable,
-    load_all_mentions_by_place,
+    load_mentions_for_place,
     load_kpis,
     load_places_with_scores,
 )
@@ -228,8 +228,7 @@ with tab_map:
 
             _render_place_summary(prow, show_score=True)
 
-            all_mentions = load_all_mentions_by_place()
-            mentions = all_mentions.get(pid, pd.DataFrame())
+            mentions = load_mentions_for_place(pid)
             st.write("")
             if mentions.empty:
                 st.caption("No review mentions pain au chocolat for this place yet.")
@@ -341,7 +340,6 @@ with tab_nearby:
                 )
             else:
                 st.caption(f"{len(nearby)} bakeries found, ranked by score.")
-                all_mentions = load_all_mentions_by_place()
                 for _, prow in nearby.head(10).iterrows():
                     header = (
                         f"🥐 {prow['score_10']:.1f}/10 — {prow['name']} "
@@ -350,7 +348,7 @@ with tab_nearby:
                     with st.expander(header):
                         st.caption(prow["formatted_address"])
                         _render_place_summary(prow, show_score=False)
-                        mentions = all_mentions.get(prow["place_id"], pd.DataFrame())
+                        mentions = load_mentions_for_place(prow["place_id"])
                         with st.container(height=260, border=True):
                             if mentions.empty:
                                 st.caption("No review mentions pain au chocolat for this place yet.")
