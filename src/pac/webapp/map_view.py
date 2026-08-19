@@ -15,7 +15,6 @@ from pac.webapp.theme import (
     PARIS_CENTER,
     confidence_pill_html,
     format_stars,
-    mention_card_html,
     score_to_color,
 )
 
@@ -61,7 +60,7 @@ def _safe(value, default=""):
     return default if value is None or (isinstance(value, float) and value != value) else value
 
 
-def _popup_html(row: pd.Series, excerpts: pd.DataFrame) -> str:
+def _popup_html(row: pd.Series) -> str:
     name = html.escape(str(_safe(row["name"], "Bakery")))
     address = html.escape(str(_safe(row["formatted_address"])))
     maps_url = _safe(row.get("google_maps_uri"))
@@ -76,22 +75,19 @@ def _popup_html(row: pd.Series, excerpts: pd.DataFrame) -> str:
 
     n_relevant = int(row["n_relevant"]) if pd.notna(row.get("n_relevant")) else 0
 
-    # Le popup reste un simple teaser (1 extrait) : la liste complète et
-    # défilable de tous les avis vit dans le panneau Streamlit à côté de la
-    # carte (cf. app.py), pas ici -- un popup Leaflet statique embarqué pour
-    # chacun des ~1700 lieux ne peut pas rester léger s'il contient déjà
-    # toutes les mentions (certains lieux en ont plus de 90).
-    if not excerpts.empty:
-        best = excerpts.iloc[0]
-        excerpt_html = mention_card_html(best["sentiment"], best["text"], best["author_name"])
-        if n_relevant > 1:
-            excerpt_html += (
-                f'<div style="font-size:11px;color:{INSUFFICIENT_DATA_COLOR};margin-top:2px;">'
-                f"+ {n_relevant - 1} more reviews in the panel to the right of the map."
-                f"</div>"
-            )
+    # Pas d'extrait d'avis embarqué ici (contrairement à une version
+    # antérieure) : la liste complète et défilable de tous les avis vit
+    # dans le panneau Streamlit à côté de la carte (cf. app.py), et cet
+    # extrait était devenu pur doublon depuis son ajout -- pour ~1700
+    # marqueurs, l'enlever réduit nettement le poids HTML de la carte
+    # (mesuré : ~4.7 Mo -> nettement moins, cf. plan performance).
+    if n_relevant > 0:
+        hint_html = (
+            f'<div style="font-size:11px;color:{INSUFFICIENT_DATA_COLOR};margin-top:6px;">'
+            "See all reviews in the panel to the right of the map.</div>"
+        )
     else:
-        excerpt_html = (
+        hint_html = (
             f'<div style="font-size:12px;color:{INSUFFICIENT_DATA_COLOR};margin-top:6px;">'
             "No review mentions pain au chocolat for this place yet.</div>"
         )
@@ -112,21 +108,17 @@ def _popup_html(row: pd.Series, excerpts: pd.DataFrame) -> str:
         <div>{score_html}</div>
       </div>
       {confidence_pill_html(row.get("confidence"), n_relevant, extra_style="display:inline-block;margin-bottom:4px;")}
-      {excerpt_html}
+      {hint_html}
       <div style="margin-top:8px;">{link}</div>
     </div>
     """
 
 
-def build_map(
-    df: pd.DataFrame, excerpts_by_place: dict[str, pd.DataFrame], **map_kwargs
-) -> folium.Map:
+def build_map(df: pd.DataFrame, **map_kwargs) -> folium.Map:
     """df : sortie filtrée de data.load_places_with_scores(), déjà passée
     par spread_duplicate_coordinates (l'appelant en a besoin de toute façon
     pour associer un clic sur la carte à un place_id -- pas de raison de
     jitterer deux fois).
-    excerpts_by_place : place_id -> DataFrame (déjà chargé par l'appelant,
-    pour éviter une requête DuckDB par marqueur pendant le rendu).
     map_kwargs : center=(lat, lon), zoom=... pour recentrer la carte (ex.
     sélection "Aller à" dans la barre latérale)."""
     location = map_kwargs.get("center", PARIS_CENTER)
@@ -147,7 +139,6 @@ def build_map(
     for _, row in df.iterrows():
         score = row["score_10"] if pd.notna(row["score_10"]) else None
         color = score_to_color(score)
-        excerpts = excerpts_by_place.get(row["place_id"], pd.DataFrame())
 
         folium.CircleMarker(
             location=(row["map_lat"], row["map_lon"]),
@@ -158,7 +149,7 @@ def build_map(
             fill_color=color,
             fill_opacity=0.9,
             tooltip=f"{row['name']} — {score:.1f}/10" if score is not None else row["name"],
-            popup=folium.Popup(_popup_html(row, excerpts), max_width=300),
+            popup=folium.Popup(_popup_html(row), max_width=300),
         ).add_to(cluster)
 
     return fmap

@@ -21,7 +21,6 @@ from pac.webapp.data import (
     load_all_mentions_by_place,
     load_kpis,
     load_places_with_scores,
-    load_review_excerpts_by_place,
 )
 from pac.webapp.geocode import GeocodeError, geocode_address, haversine_m
 from pac.webapp.map_view import build_map, spread_duplicate_coordinates
@@ -31,7 +30,6 @@ from pac.webapp.theme import (
     confidence_pill_html,
     format_percent,
     mention_card_html,
-    score_to_color,
 )
 
 st.set_page_config(
@@ -50,8 +48,23 @@ st.markdown(
     .kpi-value { font-size: 28px; font-weight: 700; color: #1a1a1a; }
     .kpi-label { font-size: 12px; color: #777; text-transform: uppercase;
                  letter-spacing: 0.04em; margin-top: 2px; }
-    .legend-dot { display:inline-block; width:10px; height:10px; border-radius:50%;
-                  margin-right:6px; vertical-align:middle; }
+
+    /* Streamlit garde les st.columns côte à côte quelle que soit la largeur
+       d'écran par défaut -- sans ça, la carte+panneau, les métriques et les
+       cartes KPI restent illisibles, écrasées en colonnes minuscules sur
+       mobile. On les force à s'empiler verticalement sous 768px. */
+    @media (max-width: 768px) {
+        div[data-testid="stHorizontalBlock"] {
+            flex-direction: column !important;
+        }
+        div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+            width: 100% !important;
+            flex: 1 1 100% !important;
+            min-width: 100% !important;
+        }
+        .kpi-value { font-size: 22px; }
+        iframe { min-height: 420px; }
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -86,6 +99,27 @@ def _render_place_summary(row: pd.Series, *, show_score: bool) -> None:
     )
     if row.get("google_maps_uri"):
         st.markdown(f"[{MAPS_LINK_LABEL}]({row['google_maps_uri']})")
+
+
+@st.cache_resource(show_spinner=False)
+def _build_map_cached(jittered: pd.DataFrame) -> object:
+    """Le HTML de la carte (plusieurs Mo pour ~1700 marqueurs, cf. plan) ne
+    doit pas être régénéré/retransmis à chaque rerun -- notamment sur un
+    simple clic de marqueur, qui ne change que le panneau de droite, jamais
+    le contenu de la carte elle-même. Sans ce cache, chaque clic reconstruisait
+    et renvoyait plusieurs Mo de HTML au navigateur pour rien. cache_resource
+    (pas cache_data) : l'objet folium.Map n'a pas besoin d'être copié à
+    chaque accès, contrairement à un DataFrame."""
+    return build_map(jittered)
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def _geocode_address_cached(address: str) -> dict:
+    """Une adresse ne bouge pas -- pas de raison de retaper la même requête
+    à l'API Adresse à chaque recherche identique. TTL long (24h) plutôt que
+    CACHE_TTL_SECONDS (60s, pensé pour les données du pipeline qui changent
+    en tâche de fond) puisque rien ici ne devient jamais périmé."""
+    return geocode_address(address)
 
 
 st.title("🥐 The best pain au chocolat in Paris")
@@ -154,28 +188,14 @@ tab_map, tab_ranking, tab_nearby, tab_about = st.tabs(
 )
 
 with tab_map:
-    legend_cols = st.columns(6)
-    for col, (label, color) in zip(
-        legend_cols,
-        [
-            ("< 4", score_to_color(2)),
-            ("4 – 6", score_to_color(5)),
-            ("6 – 7.5", score_to_color(6.5)),
-            ("7.5 – 9", score_to_color(8)),
-            ("9 – 10", score_to_color(9.5)),
-            ("No score yet", score_to_color(None)),
-        ],
-    ):
-        col.markdown(f'<span class="legend-dot" style="background:{color}"></span>{label}', unsafe_allow_html=True)
     st.caption("👉 Click a marker to see all its reviews in the panel on the right.")
 
-    excerpts_by_place = load_review_excerpts_by_place()
     jittered = spread_duplicate_coordinates(filtered)
 
     map_col, panel_col = st.columns([2, 1])
 
     with map_col:
-        fmap = build_map(jittered, excerpts_by_place)
+        fmap = _build_map_cached(jittered)
         map_state = st_folium(
             fmap,
             use_container_width=True,
@@ -297,7 +317,7 @@ with tab_nearby:
 
     if submitted and address.strip():
         try:
-            geo = geocode_address(address.strip())
+            geo = _geocode_address_cached(address.strip())
         except GeocodeError as exc:
             st.error(f"⚠️ {exc}")
         else:

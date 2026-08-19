@@ -108,9 +108,8 @@ def load_kpis() -> dict:
 def load_all_mentions_by_place() -> dict[str, pd.DataFrame]:
     """Toutes les mentions pain-au-chocolat retenues (relevant = true) par
     lieu, triées des plus positives aux plus négatives -- pour le
-    défilement complet des avis d'une boulangerie (par opposition à
-    load_review_excerpts_by_place, qui ne garde que le meilleur/pire
-    extrait pour l'aperçu léger des popups de la carte)."""
+    défilement complet des avis d'une boulangerie dans le panneau de détail
+    de la carte et l'onglet "Near an address"."""
     con = _connect()
     try:
         df = con.execute(
@@ -121,37 +120,6 @@ def load_all_mentions_by_place() -> dict[str, pd.DataFrame]:
             JOIN reviews r ON r.review_id = m.review_id
             WHERE m.relevant = true
             ORDER BY m.sentiment DESC
-            """
-        ).fetchdf()
-    finally:
-        con.close()
-    return {pid: g.drop(columns="place_id") for pid, g in df.groupby("place_id")}
-
-
-@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
-def load_review_excerpts_by_place() -> dict[str, pd.DataFrame]:
-    """L'extrait le plus positif ET le plus négatif par lieu, pour TOUS les
-    lieux en une seule requête (fenêtrée par place_id) -- pas une requête
-    par marqueur au moment du rendu de la carte, qui serait beaucoup trop
-    lent dès quelques centaines de lieux."""
-    con = _connect()
-    try:
-        df = con.execute(
-            """
-            WITH ranked AS (
-                SELECT
-                    m.place_id, m.sentiment, m.reason, r.text, r.author_name, r.rating,
-                    row_number() OVER (PARTITION BY m.place_id ORDER BY m.sentiment DESC) AS rank_pos,
-                    row_number() OVER (PARTITION BY m.place_id ORDER BY m.sentiment ASC) AS rank_neg
-                FROM pac_mentions m
-                JOIN reviews r ON r.review_id = m.review_id
-                WHERE m.relevant = true
-            )
-            SELECT place_id, sentiment, reason, text, author_name, rating
-            FROM ranked WHERE rank_pos = 1
-            UNION ALL
-            SELECT place_id, sentiment, reason, text, author_name, rating
-            FROM ranked WHERE rank_neg = 1 AND rank_pos != 1
             """
         ).fetchdf()
     finally:
