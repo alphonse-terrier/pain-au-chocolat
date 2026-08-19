@@ -43,23 +43,51 @@ leaderboard that's actually about the croissant's cousin, not the receipt.
 ## How it works, in one picture
 
 ```
-pac discover  →  pac reviews  →  pac load  →  pac score  →  streamlit run app.py
- (find bakeries)  (grab reviews)  (put in DB)  (LLM judges)   (pretty map)
+pac discover  →  pac reviews  →  pac load  →  pac score  →  pac export-app-db  →  streamlit run app.py
+ (find bakeries)  (grab reviews)  (put in DB)  (LLM judges)   (slim export)         (pretty map)
 ```
 
-Every step is its own CLI command, writes into one `data/pac.duckdb` file,
-and can be re-run on its own without breaking anything else. Nothing has to
-"finish" before you get to look at results — the map always shows whatever
-is in the database *right now*.
+The pipeline (the first five steps) writes into `data/pac.duckdb`, then
+`pac export-app-db` derives a much smaller `data/pac_app.duckdb` from it —
+same places and scores, but only the review text the app actually shows
+(skips the ~90% of raw review text that never gets displayed). **The app
+only ever opens that slim file**, and `data/pac_app.duckdb` ships committed
+in this repo — so browsing the map doesn't require running the pipeline at
+all. Re-running the pipeline is only needed if you want to refresh the data
+or hack on how it's built.
 
 ---
 
-## 🚀 Try it in five minutes
+## 🚀 Just want to browse the map?
+
+This is the common case — the app ships with real data already baked in,
+no API key, no scraping, no waiting.
 
 ```bash
 git clone <repo>
 cd pain-au-chocolat
 uv sync                              # grab the dependencies
+uv run streamlit run app.py          # → http://localhost:8501, go find your croissant's cousin
+```
+
+Needs Python 3.12+ and [uv](https://docs.astral.sh/uv/). That's it —
+`data/pac_app.duckdb` is already in the repo, so there's nothing to
+generate first.
+
+Opens a map of Paris with every bakery pinned and colored by score (gray =
+no pain-au-chocolat mentions yet — not bad, just undiscovered), a detail
+panel with all its reviews on click, a Ranking tab with CSV export, a "Near
+an address" tab, and a Methodology tab for anyone who wants the receipts.
+
+---
+
+## 🔧 Want to regenerate the data yourself?
+
+This is the advanced path: re-scraping bakeries/reviews, tweaking the
+scoring, or refreshing stale data. Skip this entirely if you just want to
+browse — see above.
+
+```bash
 uv run playwright install chromium   # the headless browser that reads reviews
 
 cp .env.example .env                 # then drop your API keys in, see below 👇
@@ -71,10 +99,9 @@ uv run pac reviews --limit 20 --max-reviews-per-place 50
 uv run pac load
 uv run pac score --dry-run           # peek at the bill before you pay it
 uv run pac score
-uv run streamlit run app.py          # → http://localhost:8501, go find your croissant's cousin
+uv run pac export-app-db             # regenerate the slim export the app reads
+uv run streamlit run app.py          # refresh the browser (or hit "🔄 Refresh data")
 ```
-
-Needs Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 
 ### 🔑 API keys
 
@@ -83,8 +110,8 @@ Needs Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 | `GOOGLE_MAPS_API_KEY` | `pac discover` | [Google Cloud Console](https://console.cloud.google.com) → enable **Places API (New)** → Credentials → Create API key. You'll need billing enabled (see the cost callout below — it's cheaper than it sounds). |
 | `OPENROUTER_API_KEY` | `pac score` | [openrouter.ai/keys](https://openrouter.ai/keys) |
 
-Good news: `pac reviews` and `pac load` are completely free — no key, no
-paid API, just a browser quietly scrolling through reviews on your behalf.
+Good news: `pac reviews`, `pac load` and `pac export-app-db` are completely
+free — no key, no paid API.
 
 ---
 
@@ -186,18 +213,27 @@ Idempotent per review: run it again after a fresh `pac reviews` + `pac
 load` and it only classifies the new arrivals. The full method is unpacked
 in **How the score is computed** below, for the curious.
 
-### 5. The app — go look at the map already
+### 5. `pac export-app-db` — trim the database down for the app
 
 ```bash
-uv run streamlit run app.py
+uv run pac export-app-db
 ```
 
-Opens `http://localhost:8501`: a map of Paris with every bakery pinned and
-colored by score (gray = no pain-au-chocolat mentions yet — not bad, just
-undiscovered), a detail popup on click, a Leaderboard tab with CSV export,
-and a Methodology tab for anyone who wants the receipts. It reads
-`data/pac.duckdb` live, so the pipeline can keep crawling in the background
-while you browse — just hit "🔄 Refresh data" when you want the latest.
+Derives `data/pac_app.duckdb` from `data/pac.duckdb`: same places and
+scores, but only the review text the app will actually show (reviews
+matching a retained pain-au-chocolat/viennoiserie mention) — dropping the
+other ~90% shrinks the file roughly 6-10x. Re-run it any time after a fresh
+`pac score` to refresh what the app shows.
+
+### 6. Back to the app
+
+```bash
+uv run streamlit run app.py          # or just hit "🔄 Refresh data" if it's already running
+```
+
+The app only ever reads `data/pac_app.duckdb` (see **Just want to browse
+the map?** above for what it looks like) — nothing you did in steps 1-5
+shows up until step 5's export has run.
 
 ---
 
@@ -255,12 +291,13 @@ src/pac/
   store.py      # DuckDB schema + JSONL loading
   llm.py        # minimal OpenRouter client
   score.py      # mention extraction -> classification -> aggregation
-  cli.py        # `pac discover|reviews|load|score|stats`
-  webapp/       # theme.py, data.py, map_view.py -- app.py's logic
+  export_app_db.py  # derives the slim pac_app.duckdb from pac.duckdb
+  cli.py        # `pac discover|reviews|load|score|export-app-db|stats`
+  webapp/       # theme.py, data.py, map_view.py, geocode.py -- app.py's logic
 app.py          # Streamlit entry point
 tests/          # pytest, fixtures captured from real data
 spikes/         # one-off diagnostic scripts (not part of the pipeline)
-data/           # generated, never committed (see .gitignore)
+data/           # generated -- pac_app.duckdb is committed (see .gitignore), the rest isn't
 ```
 
 ## 🆘 Troubleshooting
@@ -270,9 +307,9 @@ data/           # generated, never committed (see .gitignore)
 | `pac discover` fails with an auth error | `GOOGLE_MAPS_API_KEY` missing/invalid in `.env`, or "Places API (New)" isn't enabled on the Google Cloud project |
 | `pac score`: `OPENROUTER_API_KEY manquant` | Double-check the exact variable name in `.env` (yes, `OPENROUTER_API_KAY` typos happen to the best of us) |
 | Lots of `no_reviews_tab` | Normal at ~10-15% (places with genuinely no reviews); if it's way higher than that, Google may have changed its UI — check `_open_reviews_tab` in `reviews.py` |
-| Streamlit app says data "doesn't exist yet" | Run `pac load` at least once |
-| `duckdb.Error` on app startup | The database is briefly locked by a `pac load`/`pac score` running in the background — retry in a few seconds |
-| App doesn't reflect a new crawl | Click "🔄 Refresh data" (60s cache) |
+| Streamlit app says data "doesn't exist yet" | `data/pac_app.duckdb` is missing -- it ships committed in the repo, so this should only happen if you deleted it; run `pac export-app-db` (needs a `pac.duckdb` to export from, see the pipeline section) |
+| `duckdb.Error` on app startup | `pac_app.duckdb` is briefly locked by a `pac export-app-db` running in the background — retry in a few seconds |
+| App doesn't reflect a fresh `pac score` | Run `pac export-app-db` to regenerate `pac_app.duckdb`, then click "🔄 Refresh data" (60s cache) |
 
 ---
 
