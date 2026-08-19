@@ -69,7 +69,7 @@ def _render_place_summary(row: pd.Series, *, show_score: bool) -> None:
     (show_score=False, 2 métriques : le score est déjà dans l'en-tête de
     chaque expander, pas la peine de le répéter)."""
     google_rating_str = (
-        f"{row['google_rating']:.1f}" if pd.notna(row.get("google_rating")) else "—"
+        f"{row['google_rating']:.1f}/5" if pd.notna(row.get("google_rating")) else "—"
     )
     if show_score:
         b1, b2, b3 = st.columns(3)
@@ -104,15 +104,6 @@ except DatabaseUnavailable as exc:
 if places.empty:
     st.info("No bakeries loaded yet. Run `pac discover`, then `pac reviews` and `pac load`.")
     st.stop()
-
-col1, col2, col3, col4 = st.columns(4)
-col1.markdown(_kpi_card(f"{kpis['n_places']:,}", "Bakeries loaded"), unsafe_allow_html=True)
-avg_score_str = f"{kpis['avg_score']:.1f}/10" if pd.notna(kpis["avg_score"]) else "—"
-col2.markdown(_kpi_card(avg_score_str, "Weighted average score"), unsafe_allow_html=True)
-col3.markdown(_kpi_card(f"{kpis['coverage_pct']:.0f}%", "Places with a score"), unsafe_allow_html=True)
-col4.markdown(_kpi_card(f"{kpis['n_reviews']:,}", "Reviews analysed"), unsafe_allow_html=True)
-
-st.write("")
 
 if "selected_place_id" not in st.session_state:
     st.session_state.selected_place_id = None
@@ -153,9 +144,6 @@ with st.sidebar:
     filtered = filtered[(has_score & in_range) | (~has_score & include_unscored)]
 
     st.divider()
-    if st.button("🔄 Refresh data"):
-        st.cache_data.clear()
-        st.rerun()
     st.caption(f"Last review collected: {kpis['last_review_at']}")
 
 st.caption(f"Showing {len(filtered)} of {len(places)} bakeries.")
@@ -355,6 +343,15 @@ with tab_nearby:
                                 )
 
 with tab_about:
+    st.markdown("### Coverage")
+    col1, col2, col3, col4 = st.columns(4)
+    col1.markdown(_kpi_card(f"{kpis['n_places']:,}", "Bakeries loaded"), unsafe_allow_html=True)
+    avg_score_str = f"{kpis['avg_score']:.1f}/10" if pd.notna(kpis["avg_score"]) else "—"
+    col2.markdown(_kpi_card(avg_score_str, "Weighted average score"), unsafe_allow_html=True)
+    col3.markdown(_kpi_card(f"{kpis['coverage_pct']:.0f}%", "Places with a score"), unsafe_allow_html=True)
+    col4.markdown(_kpi_card(f"{kpis['n_reviews']:,}", "Reviews analysed"), unsafe_allow_html=True)
+    st.write("")
+
     st.markdown(
         """
         ### How the score is calculated

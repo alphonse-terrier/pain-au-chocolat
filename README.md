@@ -100,7 +100,7 @@ uv run pac load
 uv run pac score --dry-run           # peek at the bill before you pay it
 uv run pac score
 uv run pac export-app-db             # regenerate the slim export the app reads
-uv run streamlit run app.py          # refresh the browser (or hit "🔄 Refresh data")
+uv run streamlit run app.py          # refresh the browser (data cache expires after 60s)
 ```
 
 ### 🔑 API keys
@@ -228,12 +228,12 @@ other ~90% shrinks the file roughly 6-10x. Re-run it any time after a fresh
 ### 6. Back to the app
 
 ```bash
-uv run streamlit run app.py          # or just hit "🔄 Refresh data" if it's already running
+uv run streamlit run app.py          # or just wait -- data cache expires after 60s
 ```
 
 The app only ever reads `data/pac_app.duckdb` (see **Just want to browse
 the map?** above for what it looks like) — nothing you did in steps 1-5
-shows up until step 5's export has run.
+shows up until step 5's export has run (and up to 60s of caching after that).
 
 ---
 
@@ -309,7 +309,7 @@ data/           # generated -- pac_app.duckdb is committed (see .gitignore), the
 | Lots of `no_reviews_tab` | Normal at ~10-15% (places with genuinely no reviews); if it's way higher than that, Google may have changed its UI — check `_open_reviews_tab` in `reviews.py` |
 | Streamlit app says data "doesn't exist yet" | `data/pac_app.duckdb` is missing -- it ships committed in the repo, so this should only happen if you deleted it; run `pac export-app-db` (needs a `pac.duckdb` to export from, see the pipeline section) |
 | `duckdb.Error` on app startup | `pac_app.duckdb` is briefly locked by a `pac export-app-db` running in the background — retry in a few seconds |
-| App doesn't reflect a fresh `pac score` | Run `pac export-app-db` to regenerate `pac_app.duckdb`, then click "🔄 Refresh data" (60s cache) |
+| App doesn't reflect a fresh `pac score` | Run `pac export-app-db` to regenerate `pac_app.duckdb`, then reload the browser (60s cache) |
 
 ---
 
