@@ -278,8 +278,11 @@ SHRINKAGE_K = 2  # force du lissage vers le prior global, volontairement faible
 # négative peut finir avec la même moyenne pondérée qu'un lieu où l'avis est
 # vraiment partagé -- le consensus positif est un signal différent de
 # l'intensité moyenne, qui mérite son propre poids plutôt que d'être
-# noyé dans une simple moyenne.
-POSITIVE_RATIO_WEIGHT = 0.3
+# noyé dans une simple moyenne. Remonté de 0.3 à 0.5 (cf. plan) : un lieu
+# comme "Blé Sucré" (82% de mentions positives, médiane de sentiment 0.9,
+# mais une petite traîne d'avis très négatifs qui tirait la MOYENNE à 0.67)
+# doit être jugé sur son consensus large, pas noyé par quelques outliers.
+POSITIVE_RATIO_WEIGHT = 0.5
 
 # "viennoiserie"/"viennoiseries" est un terme générique (peut désigner un
 # croissant, une brioche, etc. -- pas spécifiquement le pain au chocolat) :
@@ -306,6 +309,18 @@ MAX_MENTION_SHARE = 0.5
 CONFIDENCE_LOW_WEIGHT = 3.0
 CONFIDENCE_MEDIUM_WEIGHT = 6.0
 
+# Winsorizing du PLANCHER négatif uniquement (asymétrique, volontairement) :
+# un -1.0 isolé ne doit pas peser plus qu'un -0.8 dans la moyenne,
+# indépendamment de son poids (auteur/fraîcheur/spécificité du terme, déjà
+# plafonnés séparément par ailleurs). PAS de plafond côté positif : sur un
+# cas réel ("Blé Sucré", médiane 0.9 mais moyenne 0.67 à cause d'une petite
+# traîne de mentions très négatives), 62% des mentions dépassaient déjà 0.8
+# -- une borne symétrique les aurait toutes écrasées et FAIT BAISSER le
+# score, l'inverse de l'effet recherché (bug réel rencontré en testant).
+# Ne change jamais le signe d'une mention -- n'affecte donc pas
+# positive_ratio (seuil à 0).
+SENTIMENT_WINSOR_FLOOR = -0.8
+
 
 def compute_scores(con: duckdb.DuckDBPyConnection) -> int:
     """Étage 3 : agrégation pondérée en SQL (cf. plan pour la justification
@@ -321,7 +336,7 @@ def compute_scores(con: duckdb.DuckDBPyConnection) -> int:
         FROM (
             SELECT
                 m.place_id,
-                m.sentiment,
+                greatest({SENTIMENT_WINSOR_FLOOR}, m.sentiment) AS sentiment,
                 m.appreciated,
                 least(ln(1 + coalesce(r.author_review_count, 0)), {REVIEWER_WEIGHT_CAP})
                     * pow(0.5, (epoch(current_timestamp) - r.published_at) / 86400.0 / {RECENCY_HALFLIFE_DAYS})
