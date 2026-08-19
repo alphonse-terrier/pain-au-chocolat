@@ -23,7 +23,7 @@ from pac.webapp.data import (
     load_places_with_scores,
 )
 from pac.webapp.geocode import GeocodeError, geocode_address, haversine_m
-from pac.webapp.map_view import build_map, spread_duplicate_coordinates
+from pac.webapp.map_view import build_map, build_marker_specs, spread_duplicate_coordinates
 from pac.webapp.theme import (
     MAPS_LINK_LABEL,
     confidence_badge,
@@ -49,21 +49,15 @@ st.markdown(
     .kpi-label { font-size: 12px; color: #777; text-transform: uppercase;
                  letter-spacing: 0.04em; margin-top: 2px; }
 
-    /* Streamlit garde les st.columns côte à côte quelle que soit la largeur
-       d'écran par défaut -- sans ça, la carte+panneau, les métriques et les
-       cartes KPI restent illisibles, écrasées en colonnes minuscules sur
-       mobile. On les force à s'empiler verticalement sous 768px. */
+    /* Rétréci juste la valeur des cartes KPI sur petit écran -- PAS de
+       flex-direction:column forcé sur les st.columns ici : ça casse le
+       rendu de la carte Leaflet (essayé, la carte redevient vide sur
+       mobile -- Leaflet calcule la taille de son conteneur une seule fois
+       au premier rendu, et un changement de largeur imposé par CSS APRÈS
+       coup le laisse avec un viewport figé sur l'ancienne taille, cf. plan
+       performance). */
     @media (max-width: 768px) {
-        div[data-testid="stHorizontalBlock"] {
-            flex-direction: column !important;
-        }
-        div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
-            width: 100% !important;
-            flex: 1 1 100% !important;
-            min-width: 100% !important;
-        }
         .kpi-value { font-size: 22px; }
-        iframe { min-height: 420px; }
     }
     </style>
     """,
@@ -101,16 +95,20 @@ def _render_place_summary(row: pd.Series, *, show_score: bool) -> None:
         st.markdown(f"[{MAPS_LINK_LABEL}]({row['google_maps_uri']})")
 
 
-@st.cache_resource(show_spinner=False)
-def _build_map_cached(jittered: pd.DataFrame) -> object:
-    """Le HTML de la carte (plusieurs Mo pour ~1700 marqueurs, cf. plan) ne
-    doit pas être régénéré/retransmis à chaque rerun -- notamment sur un
-    simple clic de marqueur, qui ne change que le panneau de droite, jamais
-    le contenu de la carte elle-même. Sans ce cache, chaque clic reconstruisait
-    et renvoyait plusieurs Mo de HTML au navigateur pour rien. cache_resource
-    (pas cache_data) : l'objet folium.Map n'a pas besoin d'être copié à
-    chaque accès, contrairement à un DataFrame."""
-    return build_map(jittered)
+@st.cache_data(ttl=60, show_spinner=False)
+def _build_marker_specs_cached(jittered: pd.DataFrame) -> list[dict]:
+    """La partie coûteuse par marqueur (couleur, tooltip, HTML du popup --
+    pour ~1700 lieux) ne doit pas être recalculée à chaque rerun, notamment
+    sur un simple clic de marqueur qui ne change que le panneau de droite.
+    On met en cache ces specs (dicts/str, cache_data classique) plutôt que
+    l'objet folium.Map lui-même : le cacher directement (essayé en
+    cache_resource) a cassé la carte en prod -- un folium.Map est mutable,
+    et le réutiliser tel quel à travers plusieurs reruns/sessions ne
+    correspond pas à la façon dont folium/streamlit-folium sont conçus pour
+    être rendus (cf. plan performance). build_map() reste appelé sans cache
+    à chaque rerun, mais reconstruire l'objet folium à partir de ces specs
+    déjà calculées est bon marché."""
+    return build_marker_specs(jittered)
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -195,7 +193,8 @@ with tab_map:
     map_col, panel_col = st.columns([2, 1])
 
     with map_col:
-        fmap = _build_map_cached(jittered)
+        marker_specs = _build_marker_specs_cached(jittered)
+        fmap = build_map(marker_specs)
         map_state = st_folium(
             fmap,
             use_container_width=True,

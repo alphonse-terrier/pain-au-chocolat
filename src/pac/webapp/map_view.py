@@ -114,11 +114,40 @@ def _popup_html(row: pd.Series) -> str:
     """
 
 
-def build_map(df: pd.DataFrame, **map_kwargs) -> folium.Map:
-    """df : sortie filtrée de data.load_places_with_scores(), déjà passée
-    par spread_duplicate_coordinates (l'appelant en a besoin de toute façon
-    pour associer un clic sur la carte à un place_id -- pas de raison de
-    jitterer deux fois).
+def build_marker_specs(df: pd.DataFrame) -> list[dict]:
+    """Précalcule tout ce qui est coûteux par marqueur (couleur, tooltip,
+    HTML du popup) en simples dict/str -- pas d'objet folium ici. Séparé de
+    build_map() pour que l'appelant puisse mettre CE résultat en cache
+    (st.cache_data : des dicts/str se copient sans risque) plutôt que
+    l'objet folium.Map lui-même.
+
+    Mettre folium.Map en cache (st.cache_resource) a été essayé et cassait
+    la carte en prod (plantage sans trace côté serveur, cf. plan) : c'est un
+    objet MUTABLE, et le réutiliser tel quel à travers plusieurs reruns/
+    sessions Streamlit -- alors que folium/streamlit-folium ne sont pas
+    conçus pour être rendus plusieurs fois depuis le même objet -- a
+    probablement corrompu son état interne. Reconstruire l'objet folium à
+    chaque rerun (mais à partir de ces specs déjà calculées, donc peu
+    coûteux) est le compromis sûr."""
+    specs = []
+    for _, row in df.iterrows():
+        score = row["score_10"] if pd.notna(row["score_10"]) else None
+        specs.append(
+            {
+                "lat": row["map_lat"],
+                "lon": row["map_lon"],
+                "color": score_to_color(score),
+                "tooltip": f"{row['name']} — {score:.1f}/10" if score is not None else row["name"],
+                "popup_html": _popup_html(row),
+            }
+        )
+    return specs
+
+
+def build_map(marker_specs: list[dict], **map_kwargs) -> folium.Map:
+    """marker_specs : sortie de build_marker_specs() -- reconstruit un
+    folium.Map tout neuf à chaque appel (léger : la partie coûteuse, le
+    calcul des popups/couleurs, est déjà faite).
     map_kwargs : center=(lat, lon), zoom=... pour recentrer la carte (ex.
     sélection "Aller à" dans la barre latérale)."""
     location = map_kwargs.get("center", PARIS_CENTER)
@@ -136,20 +165,17 @@ def build_map(df: pd.DataFrame, **map_kwargs) -> folium.Map:
         },
     ).add_to(fmap)
 
-    for _, row in df.iterrows():
-        score = row["score_10"] if pd.notna(row["score_10"]) else None
-        color = score_to_color(score)
-
+    for spec in marker_specs:
         folium.CircleMarker(
-            location=(row["map_lat"], row["map_lon"]),
+            location=(spec["lat"], spec["lon"]),
             radius=7,
             color="#ffffff",
             weight=1.5,
             fill=True,
-            fill_color=color,
+            fill_color=spec["color"],
             fill_opacity=0.9,
-            tooltip=f"{row['name']} — {score:.1f}/10" if score is not None else row["name"],
-            popup=folium.Popup(_popup_html(row), max_width=300),
+            tooltip=spec["tooltip"],
+            popup=folium.Popup(spec["popup_html"], max_width=300),
         ).add_to(cluster)
 
     return fmap
