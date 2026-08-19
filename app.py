@@ -162,6 +162,11 @@ with st.sidebar:
     include_unscored = st.checkbox("Include places without a score yet", value=True)
 
     min_google_rating = st.slider("Minimum Google rating", 0.0, 5.0, 0.0, step=0.5)
+    min_n_relevant = st.slider(
+        "Minimum pain-au-chocolat reviews", 0, 50, 0,
+        help="Places with fewer than this many retained pain-au-chocolat/viennoiserie "
+             "reviews are hidden -- a quick way to focus on well-established scores.",
+    )
 
     # --- Application des filtres --------------------------------------------
     filtered = places.copy()
@@ -170,6 +175,7 @@ with st.sidebar:
     if selected_arr:
         filtered = filtered[filtered["arrondissement"].isin(selected_arr)]
     filtered = filtered[filtered["google_rating"].fillna(0) >= min_google_rating]
+    filtered = filtered[filtered["n_relevant"].fillna(0) >= min_n_relevant]
 
     has_score = filtered["score_10"].notna()
     in_range = filtered["score_10"].between(score_range[0], score_range[1])
