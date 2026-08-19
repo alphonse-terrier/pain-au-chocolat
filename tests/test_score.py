@@ -154,7 +154,7 @@ def test_verify_anomalies_selects_only_strong_disagreement(con, monkeypatch):
 
     def fake_classify(client, review_id, place_id, text, term, model):
         calls.append(review_id)
-        return {"review_id": review_id, "place_id": place_id, "relevant": True, "appreciated": False, "sentiment": -1.0, "signal_type": None, "aspect": None, "llm_confidence": None, "reason": "second avis", "failed": False}
+        return {"review_id": review_id, "place_id": place_id, "relevant": True, "appreciated": False, "sentiment": -1.0, "signal_type": None, "aspects": {}, "llm_confidence": None, "reason": "second avis", "failed": False}
 
     monkeypatch.setattr(score_module, "_classify_one", fake_classify)
     n = verify_anomalies(con, workers=1, model="test-strong-model")
@@ -173,7 +173,7 @@ def test_verify_anomalies_never_arbitrates_toward_rating(con, monkeypatch):
 
     def fake_classify(client, review_id, place_id, text, term, model):
         # Le second modèle CONFIRME le sentiment négatif malgré la note 5★.
-        return {"review_id": review_id, "place_id": place_id, "relevant": True, "appreciated": False, "sentiment": -0.9, "signal_type": None, "aspect": None, "llm_confidence": None, "reason": "confirmé", "failed": False}
+        return {"review_id": review_id, "place_id": place_id, "relevant": True, "appreciated": False, "sentiment": -0.9, "signal_type": None, "aspects": {}, "llm_confidence": None, "reason": "confirmé", "failed": False}
 
     monkeypatch.setattr(score_module, "_classify_one", fake_classify)
     verify_anomalies(con, workers=1, model="test-strong-model")
@@ -197,7 +197,7 @@ def test_verify_anomalies_is_idempotent(con, monkeypatch):
 
     def fake_classify(client, review_id, place_id, text, term, model):
         calls.append(review_id)
-        return {"review_id": review_id, "place_id": place_id, "relevant": True, "appreciated": False, "sentiment": -0.9, "signal_type": None, "aspect": None, "llm_confidence": None, "reason": "x", "failed": False}
+        return {"review_id": review_id, "place_id": place_id, "relevant": True, "appreciated": False, "sentiment": -0.9, "signal_type": None, "aspects": {}, "llm_confidence": None, "reason": "x", "failed": False}
 
     monkeypatch.setattr(score_module, "_classify_one", fake_classify)
     verify_anomalies(con, workers=1, model="test-strong-model")

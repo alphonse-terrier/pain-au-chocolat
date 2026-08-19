@@ -58,12 +58,23 @@ CREATE TABLE IF NOT EXISTS pac_mentions (
                              -- ou si classifié avant l'introduction de ce champ)
     sentiment DOUBLE,       -- -1 (mauvais) .. +1 (excellent), spécifique à la mention
     signal_type VARCHAR,    -- 'isolated_incident' | 'ongoing_pattern' | NULL
-    aspect VARCHAR,         -- 'freshness'|'baking'|'chocolate_quantity'|'lamination'|'price_value'|'other'|NULL
     llm_confidence DOUBLE,  -- certitude du modèle dans SON jugement (0..1), pas la confiance du score
     reason VARCHAR,
     model VARCHAR,
     verified BOOLEAN DEFAULT false,  -- repassé par verify_anomalies (second avis, modèle plus fort)
     classified_at TIMESTAMP DEFAULT current_timestamp
+);
+
+-- Une mention peut évoquer plusieurs critères à la fois (ex. "pas assez de
+-- chocolat ET feuilletage raté"), chacun avec son propre poids -- table à
+-- part plutôt qu'une colonne "aspect" unique sur pac_mentions (remplacée),
+-- pour pouvoir en stocker 0, 1 ou plusieurs par mention sans bricoler du
+-- JSON en texte.
+CREATE TABLE IF NOT EXISTS pac_mention_aspects (
+    review_id VARCHAR,
+    aspect VARCHAR,         -- 'freshness'|'baking'|'chocolate_quantity'|'lamination'|'price_value'|'other'
+    weight DOUBLE,          -- 0..1 -- à quel point ce critère précis pèse dans le jugement de la mention
+    PRIMARY KEY (review_id, aspect)
 );
 
 CREATE TABLE IF NOT EXISTS pac_scores (
@@ -86,8 +97,13 @@ MIGRATIONS = [
     "ALTER TABLE pac_scores ADD COLUMN IF NOT EXISTS positive_ratio DOUBLE",
     "ALTER TABLE pac_mentions ADD COLUMN IF NOT EXISTS appreciated BOOLEAN",
     "ALTER TABLE pac_mentions ADD COLUMN IF NOT EXISTS signal_type VARCHAR",
-    "ALTER TABLE pac_mentions ADD COLUMN IF NOT EXISTS aspect VARCHAR",
     "ALTER TABLE pac_mentions ADD COLUMN IF NOT EXISTS llm_confidence DOUBLE",
+    # aspect (singulier) remplacée par la table pac_mention_aspects
+    # (plusieurs aspects par mention, chacun pondéré) avant d'avoir jamais
+    # été peuplée en prod -- pas de migration de données à faire, juste
+    # nettoyer la colonne sur les bases qui l'ont déjà (migration ajoutée
+    # juste avant celle-ci).
+    "ALTER TABLE pac_mentions DROP COLUMN IF EXISTS aspect",
 ]
 
 

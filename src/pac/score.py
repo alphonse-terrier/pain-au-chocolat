@@ -44,11 +44,11 @@ feuilletage, quantité de chocolat, etc.) -- PAS sur son prix, le service, ou un
 simple mention en passant sans jugement.
 
 Réponds en JSON strict avec exactement ces clés :
-{"relevant": true|false, "appreciated": true|false|null, "sentiment": <float entre -1.0 et 1.0>, "signal_type": "isolated_incident"|"ongoing_pattern"|null, "aspect": "freshness"|"baking"|"chocolate_quantity"|"lamination"|"price_value"|"other"|null, "confidence": <float entre 0.0 et 1.0>, "reason": "<courte justification>"}
+{"relevant": true|false, "appreciated": true|false|null, "sentiment": <float entre -1.0 et 1.0>, "signal_type": "isolated_incident"|"ongoing_pattern"|null, "aspects": [{"aspect": "freshness"|"baking"|"chocolate_quantity"|"lamination"|"price_value"|"other", "weight": <float entre 0.0 et 1.0>}, ...], "confidence": <float entre 0.0 et 1.0>, "reason": "<courte justification>"}
 
 - relevant=false si la mention parle de prix, de service, ou est neutre/sans
   jugement sur la qualité (même si l'avis global est très négatif ou positif).
-  Dans ce cas, appreciated, signal_type et aspect doivent être null.
+  Dans ce cas, appreciated et signal_type doivent être null, et aspects [].
 - Si relevant=true :
   - appreciated est un jugement NET, binaire : est-ce que la personne a
     globalement apprécié le goût/la qualité de la pâtisserie décrite (true),
@@ -64,13 +64,18 @@ Réponds en JSON strict avec exactement ces clés :
     c'était", tendance décrite sur plusieurs visites). Mets "ongoing_pattern"
     si rien n'indique explicitement un incident isolé -- c'est la valeur par
     défaut d'une mention qui décrit un état plutôt qu'un événement précis.
-  - aspect : le CRITÈRE précis évoqué -- fraîcheur/cuisson du jour
-    (freshness), cuisson/feuilletage râté ou four (baking), quantité de
-    chocolat (chocolate_quantity), qualité du feuilletage/texture
-    (lamination), rapport qualité/prix perçu MALGRÉ un jugement sur le goût
-    (price_value -- différent de relevant=false qui exclut les plaintes de
-    prix SANS jugement sur le goût), ou "other" si aucun de ces critères ne
-    correspond clairement.
+  - aspects : les CRITÈRES précis évoqués, un ou plusieurs (liste vide si
+    aucun ne se dégage clairement) -- fraîcheur/cuisson du jour (freshness),
+    cuisson/feuilletage râté ou four (baking), quantité de chocolat
+    (chocolate_quantity), qualité du feuilletage/texture (lamination),
+    rapport qualité/prix perçu MALGRÉ un jugement sur le goût (price_value
+    -- différent de relevant=false qui exclut les plaintes de prix SANS
+    jugement sur le goût), ou "other". Un avis peut cumuler plusieurs
+    critères (ex. "pas assez de chocolat ET feuilletage détrempé" ->
+    chocolate_quantity ET lamination) -- ne force pas un seul aspect si le
+    texte en évoque clairement plusieurs. weight (0..1) : à quel point CE
+    critère précis pèse dans le jugement global de la mention (le critère
+    principal doit avoir le poids le plus haut si plusieurs sont cités).
   - confidence : à quel point TU es sûr de ce jugement (pas la confiance du
     client) -- 1.0 si le passage est explicite et sans ambiguïté, plus bas
     si le texte est elliptique, sarcastique, ou traduit approximativement.
@@ -145,15 +150,33 @@ def _classify_one(
         appreciated_raw = result.get("appreciated")
         appreciated = bool(appreciated_raw) if relevant and appreciated_raw is not None else None
 
-        # signal_type/aspect : valeurs d'un enum fermé -- une valeur hors
-        # liste (hallucination, faute de frappe du modèle) retombe sur None
+        # signal_type : valeur d'un enum fermé -- une valeur hors liste
+        # (hallucination, faute de frappe du modèle) retombe sur None
         # plutôt que d'être stockée telle quelle (cf. plan : pas de valeur
         # inventée, mais pas non plus de valeur invalide qui casserait un
         # filtre/groupby en aval).
         signal_type = result.get("signal_type") if relevant else None
         signal_type = signal_type if signal_type in VALID_SIGNAL_TYPES else None
-        aspect = result.get("aspect") if relevant else None
-        aspect = aspect if aspect in VALID_ASPECTS else None
+
+        # aspects : liste de {aspect, weight} -- une mention peut cumuler
+        # plusieurs critères (cf. plan). Chaque entrée invalide (aspect hors
+        # enum, weight non numérique) est silencieusement écartée plutôt que
+        # de faire échouer toute la mention pour un seul champ mal formé ;
+        # les doublons d'aspect (le modèle répète la même valeur) gardent le
+        # poids le plus élevé rencontré.
+        aspects: dict[str, float] = {}
+        if relevant:
+            for item in result.get("aspects") or []:
+                if not isinstance(item, dict):
+                    continue
+                a = item.get("aspect")
+                if a not in VALID_ASPECTS:
+                    continue
+                try:
+                    w = max(0.0, min(1.0, float(item.get("weight", 0.0))))
+                except (ValueError, TypeError):
+                    continue
+                aspects[a] = max(w, aspects.get(a, 0.0))
 
         # confidence : certitude du MODÈLE dans son propre jugement (pas la
         # confiance globale du score, déjà calculée ailleurs) -- None si
@@ -189,8 +212,8 @@ def _classify_one(
         # savait pas décoder, et le fallback écrasait 16 classifications
         # valides -- cf. plan et llm._strip_markdown_fence pour le correctif
         # racine).
-        relevant, appreciated, sentiment, signal_type, aspect, llm_confidence, reason, failed = (
-            False, None, 0.0, None, None, None, f"classification échouée: {exc}", True,
+        relevant, appreciated, sentiment, signal_type, aspects, llm_confidence, reason, failed = (
+            False, None, 0.0, None, {}, None, f"classification échouée: {exc}", True,
         )
     return {
         "review_id": review_id,
@@ -199,7 +222,7 @@ def _classify_one(
         "appreciated": appreciated,
         "sentiment": sentiment,
         "signal_type": signal_type,
-        "aspect": aspect,
+        "aspects": aspects,
         "llm_confidence": llm_confidence,
         "reason": reason,
         "failed": failed,
@@ -242,34 +265,50 @@ def classify_mentions(
                 total=len(futures),
                 description="classification LLM",
             ):
-                r = f.result()
-                con.execute(
-                    """
-                    INSERT INTO pac_mentions
-                        (review_id, place_id, relevant, appreciated, sentiment, signal_type,
-                         aspect, llm_confidence, reason, model, classified_at, verified)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, false)
-                    ON CONFLICT (review_id) DO UPDATE SET
-                        relevant = excluded.relevant,
-                        appreciated = excluded.appreciated,
-                        sentiment = excluded.sentiment,
-                        signal_type = excluded.signal_type,
-                        aspect = excluded.aspect,
-                        llm_confidence = excluded.llm_confidence,
-                        reason = excluded.reason,
-                        model = excluded.model,
-                        classified_at = excluded.classified_at,
-                        verified = false
-                    """,
-                    [
-                        r["review_id"], r["place_id"], r["relevant"], r["appreciated"],
-                        r["sentiment"], r["signal_type"], r["aspect"], r["llm_confidence"],
-                        r["reason"], model, datetime.now(timezone.utc),
-                    ],
-                )
+                _write_mention_result(con, f.result(), model, verified=False)
                 n_done += 1
 
     return n_done
+
+
+def _write_mention_result(con: duckdb.DuckDBPyConnection, r: dict, model: str, verified: bool) -> None:
+    """Enregistre le résultat d'une classification (pac_mentions) et ses
+    aspects (pac_mention_aspects) -- factorisé entre classify_mentions et
+    verify_anomalies, les deux appelant _classify_one et devant écrire les
+    deux tables de la même façon."""
+    con.execute(
+        """
+        INSERT INTO pac_mentions
+            (review_id, place_id, relevant, appreciated, sentiment, signal_type,
+             llm_confidence, reason, model, classified_at, verified)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (review_id) DO UPDATE SET
+            relevant = excluded.relevant,
+            appreciated = excluded.appreciated,
+            sentiment = excluded.sentiment,
+            signal_type = excluded.signal_type,
+            llm_confidence = excluded.llm_confidence,
+            reason = excluded.reason,
+            model = excluded.model,
+            classified_at = excluded.classified_at,
+            verified = excluded.verified
+        """,
+        [
+            r["review_id"], r["place_id"], r["relevant"], r["appreciated"],
+            r["sentiment"], r["signal_type"], r["llm_confidence"],
+            r["reason"], model, datetime.now(timezone.utc), verified,
+        ],
+    )
+    # DELETE puis INSERT plutôt qu'un upsert par aspect : le NOMBRE d'aspects
+    # peut changer d'une classification à l'autre (reclassify), il faut donc
+    # pouvoir aussi bien ajouter que retirer des lignes, pas juste les mettre
+    # à jour une à une.
+    con.execute("DELETE FROM pac_mention_aspects WHERE review_id = ?", [r["review_id"]])
+    if r["aspects"]:
+        con.executemany(
+            "INSERT INTO pac_mention_aspects (review_id, aspect, weight) VALUES (?, ?, ?)",
+            [(r["review_id"], aspect, weight) for aspect, weight in r["aspects"].items()],
+        )
 
 
 # Seuil de désaccord note/sentiment déclenchant une double-vérification
@@ -331,18 +370,7 @@ def verify_anomalies(con: duckdb.DuckDBPyConnection, workers: int, model: str) -
                     # que d'écraser une classification valide par un
                     # résultat par défaut inventé.
                     continue
-                con.execute(
-                    """
-                    UPDATE pac_mentions
-                    SET relevant = ?, appreciated = ?, sentiment = ?, signal_type = ?,
-                        aspect = ?, llm_confidence = ?, reason = ?, model = ?, verified = true
-                    WHERE review_id = ?
-                    """,
-                    [
-                        r["relevant"], r["appreciated"], r["sentiment"], r["signal_type"],
-                        r["aspect"], r["llm_confidence"], r["reason"], model, r["review_id"],
-                    ],
-                )
+                _write_mention_result(con, r, model, verified=True)
                 n_updated += 1
     return n_updated
 
