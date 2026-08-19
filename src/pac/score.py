@@ -31,22 +31,32 @@ MENTION_TERMS = [
     "pains chocolat",
     "chocolatine",
     "chocolatines",
+    "viennoiserie",  # terme générique (croissant, chocolatine, etc. inclus) --
+    "viennoiseries",  # élargit volontairement le score au-delà du seul pain au chocolat
 ]
 
 SYSTEM_PROMPT = """Tu analyses un avis Google Maps sur une boulangerie parisienne.
-On t'indique un terme détecté ("pain au chocolat" ou "chocolatine") dans le
-texte. Détermine si le passage autour de ce terme exprime un avis sur le
-GOÛT/LA QUALITÉ de la pâtisserie elle-même (texture, fraîcheur, feuilletage,
-quantité de chocolat, etc.) -- PAS sur son prix, le service, ou une simple
-mention en passant sans jugement.
+On t'indique un terme détecté (une pâtisserie précise comme "pain au
+chocolat"/"chocolatine", ou le terme générique "viennoiserie") dans le texte.
+Détermine si le passage autour de ce terme exprime un avis sur le
+GOÛT/LA QUALITÉ de la ou des pâtisserie(s) elle(s)-même(s) (texture, fraîcheur,
+feuilletage, quantité de chocolat, etc.) -- PAS sur son prix, le service, ou une
+simple mention en passant sans jugement.
 
 Réponds en JSON strict avec exactement ces clés :
-{"relevant": true|false, "sentiment": <float entre -1.0 et 1.0>, "reason": "<courte justification>"}
+{"relevant": true|false, "appreciated": true|false|null, "sentiment": <float entre -1.0 et 1.0>, "reason": "<courte justification>"}
 
 - relevant=false si la mention parle de prix, de service, ou est neutre/sans
   jugement sur la qualité (même si l'avis global est très négatif ou positif).
-- Si relevant=true, sentiment doit juger UNIQUEMENT la qualité de la
-  pâtisserie décrite, pas la note globale de l'avis ni le prix.
+  Dans ce cas, appreciated doit être null.
+- Si relevant=true :
+  - appreciated est un jugement NET, binaire : est-ce que la personne a
+    globalement apprécié le goût/la qualité de la pâtisserie décrite (true),
+    ou pas (false) ? Pas de zone grise : tranche même si l'avis est mesuré.
+  - sentiment note l'INTENSITÉ de ce jugement sur une échelle continue de
+    -1.0 (détestable) à 1.0 (excellent), cohérente avec appreciated (positif
+    si appreciated=true, négatif si appreciated=false) -- juge UNIQUEMENT la
+    qualité de la pâtisserie décrite, pas la note globale de l'avis ni le prix.
 """
 
 
@@ -98,6 +108,14 @@ def _classify_one(
         relevant = bool(result.get("relevant"))
         sentiment = float(result.get("sentiment", 0.0))
         sentiment = max(-1.0, min(1.0, sentiment))
+        # appreciated : jugement net (apprécié/pas apprécié), distinct de
+        # l'intensité continue `sentiment` -- plus robuste pour le ratio
+        # d'avis positifs qu'un simple seuil sentiment >= 0 (cf. plan). Pas
+        # de valeur inventée si le modèle omet le champ ou répond hors
+        # sujet : None reste None (positive_ratio retombe sur le seuil de
+        # sentiment pour ces cas, cf. compute_scores).
+        appreciated_raw = result.get("appreciated")
+        appreciated = bool(appreciated_raw) if relevant and appreciated_raw is not None else None
         reason = str(result.get("reason", ""))[:500]
         failed = False
     except (LLMError, ValueError, TypeError, httpx.HTTPError) as exc:
@@ -121,11 +139,14 @@ def _classify_one(
         # savait pas décoder, et le fallback écrasait 16 classifications
         # valides -- cf. plan et llm._strip_markdown_fence pour le correctif
         # racine).
-        relevant, sentiment, reason, failed = False, 0.0, f"classification échouée: {exc}", True
+        relevant, appreciated, sentiment, reason, failed = (
+            False, None, 0.0, f"classification échouée: {exc}", True,
+        )
     return {
         "review_id": review_id,
         "place_id": place_id,
         "relevant": relevant,
+        "appreciated": appreciated,
         "sentiment": sentiment,
         "reason": reason,
         "failed": failed,
@@ -160,11 +181,15 @@ def classify_mentions(con: duckdb.DuckDBPyConnection, workers: int, model: str) 
                 r = f.result()
                 con.execute(
                     """
-                    INSERT INTO pac_mentions (review_id, place_id, relevant, sentiment, reason, model, classified_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO pac_mentions
+                        (review_id, place_id, relevant, appreciated, sentiment, reason, model, classified_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (review_id) DO NOTHING
                     """,
-                    [r["review_id"], r["place_id"], r["relevant"], r["sentiment"], r["reason"], model, datetime.now(timezone.utc)],
+                    [
+                        r["review_id"], r["place_id"], r["relevant"], r["appreciated"],
+                        r["sentiment"], r["reason"], model, datetime.now(timezone.utc),
+                    ],
                 )
                 n_done += 1
 
@@ -233,10 +258,10 @@ def verify_anomalies(con: duckdb.DuckDBPyConnection, workers: int, model: str) -
                 con.execute(
                     """
                     UPDATE pac_mentions
-                    SET relevant = ?, sentiment = ?, reason = ?, model = ?, verified = true
+                    SET relevant = ?, appreciated = ?, sentiment = ?, reason = ?, model = ?, verified = true
                     WHERE review_id = ?
                     """,
-                    [r["relevant"], r["sentiment"], r["reason"], model, r["review_id"]],
+                    [r["relevant"], r["appreciated"], r["sentiment"], r["reason"], model, r["review_id"]],
                 )
                 n_updated += 1
     return n_updated
@@ -244,62 +269,140 @@ def verify_anomalies(con: duckdb.DuckDBPyConnection, workers: int, model: str) -
 
 # Constantes de pondération (cf. plan, section Étape 3) ---------------------
 REVIEWER_WEIGHT_CAP = math.log(1 + 500)  # plafonne l'effet des power users
-RECENCY_HALFLIFE_DAYS = 730  # ~2 ans : un avis perd moitié de son poids en 2 ans
+RECENCY_HALFLIFE_DAYS = 365  # un avis perd moitié de son poids par an
 SHRINKAGE_K = 2  # force du lissage vers le prior global, volontairement faible
+
+# Poids du "consensus" (part pondérée des mentions positives, sentiment >= 0)
+# dans le score final, face à l'intensité moyenne du sentiment. Sans ça, un
+# lieu avec 90% de mentions modérément positives et une seule mention très
+# négative peut finir avec la même moyenne pondérée qu'un lieu où l'avis est
+# vraiment partagé -- le consensus positif est un signal différent de
+# l'intensité moyenne, qui mérite son propre poids plutôt que d'être
+# noyé dans une simple moyenne.
+POSITIVE_RATIO_WEIGHT = 0.3
+
+# "viennoiserie"/"viennoiseries" est un terme générique (peut désigner un
+# croissant, une brioche, etc. -- pas spécifiquement le pain au chocolat) :
+# une mention qui l'utilise a moins de poids qu'une mention qui nomme
+# explicitement "pain au chocolat"/"chocolatine", plutôt que de compter à
+# l'identique dans le score.
+GENERIC_TERM_WEIGHT = 0.4
+GENERIC_TERMS = ("viennoiserie", "viennoiseries")
+
+# Aucune mention ne peut représenter plus de MAX_MENTION_SHARE du poids total
+# d'un lieu -- sans ça, une seule mention très fortement pondérée (auteur
+# actif + avis récent + terme spécifique) peut dominer entièrement la
+# moyenne d'un lieu qui a par ailleurs plusieurs autres mentions plus
+# modestes. Sans effet quand un lieu n'a qu'1 seule mention pertinente (le
+# poids s'annule dans une moyenne à un seul terme) -- dans ce cas c'est le
+# lissage (SHRINKAGE_K) qui protège, pas ce plafond.
+MAX_MENTION_SHARE = 0.5
+
+# Seuils de confiance sur le POIDS effectif cumulé (somme des `weight`), pas
+# sur le nombre brut de mentions -- 3 mentions récentes de contributeurs
+# actifs et 3 mentions anciennes de comptes neufs ne méritent pas le même
+# badge de confiance, alors qu'elles avaient le même n_relevant=3 avant ce
+# changement.
+CONFIDENCE_LOW_WEIGHT = 3.0
+CONFIDENCE_MEDIUM_WEIGHT = 6.0
 
 
 def compute_scores(con: duckdb.DuckDBPyConnection) -> int:
     """Étage 3 : agrégation pondérée en SQL (cf. plan pour la justification
     détaillée de chaque choix, notamment l'absence de lissage vers la note
     globale du lieu -- décision explicite de l'utilisateur)."""
+    generic_terms_sql = ", ".join(f"'{t}'" for t in GENERIC_TERMS)
     con.execute(
         f"""
         CREATE OR REPLACE TEMP TABLE _weighted AS
         SELECT
-            m.place_id,
-            m.sentiment,
-            least(ln(1 + coalesce(r.author_review_count, 0)), {REVIEWER_WEIGHT_CAP})
-                * pow(0.5, (epoch(current_timestamp) - r.published_at) / 86400.0 / {RECENCY_HALFLIFE_DAYS})
-                AS weight
-        FROM pac_mentions m
-        JOIN reviews r ON r.review_id = m.review_id
-        WHERE m.relevant = true
+            place_id, sentiment, appreciated,
+            least(weight, {MAX_MENTION_SHARE} * sum(weight) OVER (PARTITION BY place_id)) AS weight
+        FROM (
+            SELECT
+                m.place_id,
+                m.sentiment,
+                m.appreciated,
+                least(ln(1 + coalesce(r.author_review_count, 0)), {REVIEWER_WEIGHT_CAP})
+                    * pow(0.5, (epoch(current_timestamp) - r.published_at) / 86400.0 / {RECENCY_HALFLIFE_DAYS})
+                    * CASE WHEN mr.matched_term IN ({generic_terms_sql}) THEN {GENERIC_TERM_WEIGHT} ELSE 1.0 END
+                    AS weight
+            FROM pac_mentions m
+            JOIN reviews r ON r.review_id = m.review_id
+            JOIN pac_mentions_raw mr ON mr.review_id = m.review_id
+            WHERE m.relevant = true
+        )
     """
     )
 
     prior_row = con.execute(
-        "SELECT sum(sentiment * weight) / sum(weight) FROM _weighted"
+        "SELECT sum(sentiment * weight) / nullif(sum(weight), 0) FROM _weighted"
     ).fetchone()
     prior_global = prior_row[0] if prior_row and prior_row[0] is not None else 0.0
 
     con.execute("DELETE FROM pac_scores")
     con.execute(
         f"""
-        INSERT INTO pac_scores (place_id, name, n_mentions_total, n_relevant, score_10, confidence)
+        INSERT INTO pac_scores (place_id, name, n_mentions_total, n_relevant, score_10, confidence, positive_ratio)
         SELECT
             p.place_id,
             p.name,
             coalesce(raw.n_total, 0) AS n_mentions_total,
             coalesce(w.n_relevant, 0) AS n_relevant,
             CASE
-                WHEN coalesce(w.n_relevant, 0) = 0 THEN NULL
+                -- sum_weight = 0 (ex: seule(s) mention(s) d'un lieu postée(s)
+                -- par un compte à 0 avis publiés -> poids crédibilité nul) ->
+                -- raw_score/positive_ratio seraient 0/0 = NaN, pas NULL, en
+                -- SQL flottant -- un NaN traverse `WHERE score_10 IS NOT
+                -- NULL` (NaN != NULL) et pollue tout avg() en aval (bug réel
+                -- rencontré : KPI "score moyen" affichait NaN/10). On traite
+                -- explicitement ce cas comme un lieu sans score exploitable,
+                -- pas différent de n_relevant=0.
+                WHEN coalesce(w.n_relevant, 0) = 0 OR coalesce(w.sum_weight, 0) = 0 THEN NULL
                 ELSE (
-                    (w.n_relevant * w.raw_score + {SHRINKAGE_K} * {prior_global}) / (w.n_relevant + {SHRINKAGE_K})
+                    (
+                        w.n_relevant * (
+                            {1 - POSITIVE_RATIO_WEIGHT} * w.raw_score
+                            + {POSITIVE_RATIO_WEIGHT} * (2 * w.positive_ratio - 1)
+                        )
+                        + {SHRINKAGE_K} * {prior_global}
+                    ) / (w.n_relevant + {SHRINKAGE_K})
                     + 1
                 ) * 5
             END AS score_10,
             CASE
-                WHEN coalesce(w.n_relevant, 0) = 0 THEN 'insufficient_data'
-                WHEN w.n_relevant < 3 THEN 'low'
-                WHEN w.n_relevant < 6 THEN 'medium'
+                WHEN coalesce(w.sum_weight, 0) = 0 THEN 'insufficient_data'
+                WHEN w.sum_weight < {CONFIDENCE_LOW_WEIGHT} THEN 'low'
+                WHEN w.sum_weight < {CONFIDENCE_MEDIUM_WEIGHT} THEN 'medium'
                 ELSE 'high'
-            END AS confidence
+            END AS confidence,
+            w.positive_ratio
         FROM places p
         LEFT JOIN (
             SELECT place_id, count(*) AS n_total FROM pac_mentions_raw GROUP BY place_id
         ) raw ON raw.place_id = p.place_id
         LEFT JOIN (
-            SELECT place_id, count(*) AS n_relevant, sum(sentiment * weight) / sum(weight) AS raw_score
+            SELECT
+                place_id,
+                count(*) AS n_relevant,
+                sum(weight) AS sum_weight,
+                -- nullif(sum(weight), 0) : un poids total nul (mention(s)
+                -- postée(s) uniquement par des comptes à 0 avis publiés,
+                -- cf. commentaire sur score_10 ci-dessus) donnerait 0/0 = NaN
+                -- plutôt que NULL en SQL flottant -- on force explicitement
+                -- NULL, jamais un NaN qui traverserait silencieusement les
+                -- filtres IS NOT NULL en aval.
+                sum(sentiment * weight) / nullif(sum(weight), 0) AS raw_score,
+                -- `appreciated` (jugement net du LLM) prime sur le seuil
+                -- sentiment >= 0 quand il est disponible -- plus robuste
+                -- qu'un simple seuil sur une note continue (cf. plan).
+                sum(
+                    CASE
+                        WHEN appreciated IS NOT NULL THEN CASE WHEN appreciated THEN weight ELSE 0 END
+                        WHEN sentiment >= 0 THEN weight
+                        ELSE 0
+                    END
+                ) / nullif(sum(weight), 0) AS positive_ratio
             FROM _weighted GROUP BY place_id
         ) w ON w.place_id = p.place_id
         """

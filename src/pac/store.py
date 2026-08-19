@@ -54,6 +54,8 @@ CREATE TABLE IF NOT EXISTS pac_mentions (
     review_id VARCHAR PRIMARY KEY,
     place_id VARCHAR,
     relevant BOOLEAN,
+    appreciated BOOLEAN,    -- jugement net apprécié/pas apprécié (NULL si non pertinent,
+                             -- ou si classifié avant l'introduction de ce champ)
     sentiment DOUBLE,       -- -1 (mauvais) .. +1 (excellent), spécifique à la mention
     reason VARCHAR,
     model VARCHAR,
@@ -68,6 +70,7 @@ CREATE TABLE IF NOT EXISTS pac_scores (
     n_relevant INTEGER,
     score_10 DOUBLE,        -- NULL si n_relevant = 0 (cf. plan : pas de valeur par défaut)
     confidence VARCHAR,      -- 'insufficient_data' | 'low' | 'medium' | 'high'
+    positive_ratio DOUBLE,  -- part pondérée des mentions positives (sentiment >= 0)
     updated_at TIMESTAMP DEFAULT current_timestamp
 );
 """
@@ -77,6 +80,8 @@ CREATE TABLE IF NOT EXISTS pac_scores (
 # -- `CREATE TABLE IF NOT EXISTS` ne modifie pas une table existante.
 MIGRATIONS = [
     "ALTER TABLE pac_mentions ADD COLUMN IF NOT EXISTS verified BOOLEAN DEFAULT false",
+    "ALTER TABLE pac_scores ADD COLUMN IF NOT EXISTS positive_ratio DOUBLE",
+    "ALTER TABLE pac_mentions ADD COLUMN IF NOT EXISTS appreciated BOOLEAN",
 ]
 
 
