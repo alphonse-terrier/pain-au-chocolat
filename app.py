@@ -18,15 +18,24 @@ from streamlit_folium import st_folium
 
 from pac.webapp.data import (
     DatabaseUnavailable,
+    load_all_mentions_by_place,
     load_kpis,
     load_places_with_scores,
     load_review_excerpts_by_place,
 )
-from pac.webapp.map_view import build_map
-from pac.webapp.theme import score_to_color
+from pac.webapp.geocode import GeocodeError, geocode_address, haversine_m
+from pac.webapp.map_view import build_map, spread_duplicate_coordinates
+from pac.webapp.theme import (
+    MAPS_LINK_LABEL,
+    confidence_badge,
+    confidence_pill_html,
+    format_percent,
+    mention_card_html,
+    score_to_color,
+)
 
 st.set_page_config(
-    page_title="Pain au Chocolat de Paris",
+    page_title="The best pain au chocolat in Paris",
     page_icon="🥐",
     layout="wide",
 )
@@ -53,10 +62,36 @@ def _kpi_card(value: str, label: str) -> str:
     return f'<div class="kpi-card"><div class="kpi-value">{value}</div><div class="kpi-label">{label}</div></div>'
 
 
-st.title("🥐 Pain au Chocolat de Paris")
+def _render_place_summary(row: pd.Series, *, show_score: bool) -> None:
+    """Métriques + badge de confiance + lien Google Maps pour un lieu --
+    partagé entre le panneau de détail de la carte (show_score=True, 3
+    métriques) et les résultats de l'onglet "Near an address"
+    (show_score=False, 2 métriques : le score est déjà dans l'en-tête de
+    chaque expander, pas la peine de le répéter)."""
+    google_rating_str = (
+        f"{row['google_rating']:.1f}" if pd.notna(row.get("google_rating")) else "—"
+    )
+    if show_score:
+        b1, b2, b3 = st.columns(3)
+        score_str = f"{row['score_10']:.1f}/10" if pd.notna(row.get("score_10")) else "—"
+        b1.metric("Score", score_str)
+        b2.metric("Positive reviews", format_percent(row.get("positive_ratio")))
+        b3.metric("Google rating", google_rating_str)
+    else:
+        b1, b2 = st.columns(2)
+        b1.metric("Positive reviews", format_percent(row.get("positive_ratio")))
+        b2.metric("Google rating", google_rating_str)
+    st.markdown(
+        confidence_pill_html(row.get("confidence"), row.get("n_relevant")), unsafe_allow_html=True
+    )
+    if row.get("google_maps_uri"):
+        st.markdown(f"[{MAPS_LINK_LABEL}]({row['google_maps_uri']})")
+
+
+st.title("🥐 The best pain au chocolat in Paris")
 st.caption(
-    "Où trouver le meilleur pain au chocolat de Paris — score calculé à partir des avis "
-    "Google qui en parlent spécifiquement, pas de la note globale de la boulangerie."
+    "Where to find the best pain au chocolat in Paris — scored from the Google "
+    "reviews that actually talk about it, not from the bakery's overall rating."
 )
 
 try:
@@ -67,59 +102,68 @@ except DatabaseUnavailable as exc:
     st.stop()
 
 if places.empty:
-    st.info("Aucune boulangerie chargée encore. Lance `pac discover` puis `pac reviews` et `pac load`.")
+    st.info("No bakeries loaded yet. Run `pac discover`, then `pac reviews` and `pac load`.")
     st.stop()
 
 col1, col2, col3, col4 = st.columns(4)
-col1.markdown(_kpi_card(f"{kpis['n_places']:,}".replace(",", " "), "Boulangeries chargées"), unsafe_allow_html=True)
-avg_score_str = f"{kpis['avg_score']:.1f}/10" if kpis["avg_score"] else "—"
-col2.markdown(_kpi_card(avg_score_str, "Score moyen pondéré"), unsafe_allow_html=True)
-col3.markdown(_kpi_card(f"{kpis['coverage_pct']:.0f}%", "Lieux avec un score"), unsafe_allow_html=True)
-col4.markdown(_kpi_card(f"{kpis['n_reviews']:,}".replace(",", " "), "Avis analysés"), unsafe_allow_html=True)
+col1.markdown(_kpi_card(f"{kpis['n_places']:,}", "Bakeries loaded"), unsafe_allow_html=True)
+avg_score_str = f"{kpis['avg_score']:.1f}/10" if pd.notna(kpis["avg_score"]) else "—"
+col2.markdown(_kpi_card(avg_score_str, "Weighted average score"), unsafe_allow_html=True)
+col3.markdown(_kpi_card(f"{kpis['coverage_pct']:.0f}%", "Places with a score"), unsafe_allow_html=True)
+col4.markdown(_kpi_card(f"{kpis['n_reviews']:,}", "Reviews analysed"), unsafe_allow_html=True)
 
 st.write("")
 
+if "selected_place_id" not in st.session_state:
+    st.session_state.selected_place_id = None
+if "_last_map_click" not in st.session_state:
+    st.session_state._last_map_click = None
+
+
+def _select_place(place_id: str | None) -> None:
+    st.session_state.selected_place_id = place_id
+
+
 # --- Barre latérale : filtres ------------------------------------------------
 with st.sidebar:
-    st.header("Filtres")
+    st.header("Filters")
 
-    search = st.text_input("🔍 Rechercher par nom", "")
+    search = st.text_input("🔍 Search by name", "")
 
     arrondissements = sorted(a for a in places["arrondissement"].dropna().unique())
-    selected_arr = st.multiselect("Arrondissement", arrondissements, default=[])
+    selected_arr = st.multiselect(
+        "Arrondissement", arrondissements, default=[], help="Paris administrative district (1-20)"
+    )
 
-    score_range = st.slider("Score pain-au-chocolat", 0.0, 10.0, (0.0, 10.0), step=0.5)
-    include_unscored = st.checkbox("Inclure les lieux sans score encore", value=True)
+    score_range = st.slider("Score", 0.0, 10.0, (0.0, 10.0), step=0.5)
+    include_unscored = st.checkbox("Include places without a score yet", value=True)
 
-    min_google_rating = st.slider("Note Google minimale", 0.0, 5.0, 0.0, step=0.5)
+    min_google_rating = st.slider("Minimum Google rating", 0.0, 5.0, 0.0, step=0.5)
+
+    # --- Application des filtres --------------------------------------------
+    filtered = places.copy()
+    if search:
+        filtered = filtered[filtered["name"].str.contains(search, case=False, na=False)]
+    if selected_arr:
+        filtered = filtered[filtered["arrondissement"].isin(selected_arr)]
+    filtered = filtered[filtered["google_rating"].fillna(0) >= min_google_rating]
+
+    has_score = filtered["score_10"].notna()
+    in_range = filtered["score_10"].between(score_range[0], score_range[1])
+    filtered = filtered[(has_score & in_range) | (~has_score & include_unscored)]
 
     st.divider()
-    st.subheader("Aller à")
-    goto_options = [""] + sorted(places["name"].dropna().unique().tolist())
-    goto = st.selectbox("Centrer la carte sur…", goto_options, index=0)
-
-    st.divider()
-    if st.button("🔄 Actualiser les données"):
+    if st.button("🔄 Refresh data"):
         st.cache_data.clear()
         st.rerun()
-    st.caption(f"Dernier avis récolté : {kpis['last_review_at']}")
+    st.caption(f"Last review collected: {kpis['last_review_at']}")
 
-# --- Application des filtres -------------------------------------------------
-filtered = places.copy()
-if search:
-    filtered = filtered[filtered["name"].str.contains(search, case=False, na=False)]
-if selected_arr:
-    filtered = filtered[filtered["arrondissement"].isin(selected_arr)]
-filtered = filtered[filtered["google_rating"].fillna(0) >= min_google_rating]
-
-has_score = filtered["score_10"].notna()
-in_range = filtered["score_10"].between(score_range[0], score_range[1])
-filtered = filtered[(has_score & in_range) | (~has_score & include_unscored)]
-
-st.caption(f"{len(filtered)} boulangerie(s) affichée(s) sur {len(places)}.")
+st.caption(f"Showing {len(filtered)} of {len(places)} bakeries.")
 
 # --- Onglets ------------------------------------------------------------------
-tab_map, tab_ranking, tab_about = st.tabs(["🗺️ Carte", "🏆 Classement", "ℹ️ Méthodologie"])
+tab_map, tab_ranking, tab_nearby, tab_about = st.tabs(
+    ["🗺️ Map", "🏆 Ranking", "📍 Near an address", "ℹ️ Methodology"]
+)
 
 with tab_map:
     legend_cols = st.columns(6)
@@ -128,71 +172,213 @@ with tab_map:
         [
             ("< 4", score_to_color(2)),
             ("4 – 6", score_to_color(5)),
-            ("6 – 7,5", score_to_color(6.5)),
-            ("7,5 – 9", score_to_color(8)),
+            ("6 – 7.5", score_to_color(6.5)),
+            ("7.5 – 9", score_to_color(8)),
             ("9 – 10", score_to_color(9.5)),
-            ("Pas encore de score", score_to_color(None)),
+            ("No score yet", score_to_color(None)),
         ],
     ):
         col.markdown(f'<span class="legend-dot" style="background:{color}"></span>{label}', unsafe_allow_html=True)
+    st.caption("👉 Click a marker to see all its reviews in the panel on the right.")
 
     excerpts_by_place = load_review_excerpts_by_place()
+    jittered = spread_duplicate_coordinates(filtered)
 
-    map_kwargs = {}
-    if goto:
-        row = places.loc[places["name"] == goto].iloc[0]
-        map_kwargs = {"center": (row["lat"], row["lon"]), "zoom": 16}
+    map_col, panel_col = st.columns([2, 1])
 
-    fmap = build_map(filtered, excerpts_by_place)
-    st_folium(fmap, use_container_width=True, height=620, returned_objects=[], **map_kwargs)
+    with map_col:
+        fmap = build_map(jittered, excerpts_by_place)
+        map_state = st_folium(
+            fmap,
+            use_container_width=True,
+            height=620,
+            returned_objects=["last_object_clicked"],
+        )
+
+    clicked = (map_state or {}).get("last_object_clicked")
+    if clicked and clicked.get("lat") is not None and clicked != st.session_state._last_map_click:
+        st.session_state._last_map_click = clicked
+        dist2 = (jittered["map_lat"] - clicked["lat"]) ** 2 + (jittered["map_lon"] - clicked["lng"]) ** 2
+        nearest = dist2.idxmin()
+        if dist2.loc[nearest] < (0.0005) ** 2:  # ~50 m -- ignore un clic sur du vide
+            _select_place(jittered.loc[nearest, "place_id"])
+            st.rerun()
+
+    with panel_col:
+        pid = st.session_state.selected_place_id
+        if not pid or pid not in places["place_id"].values:
+            st.info("Click a marker on the map to see all its reviews here.")
+        else:
+            prow = places.loc[places["place_id"] == pid].iloc[0]
+            st.markdown(f"#### {prow['name']}")
+            st.caption(prow["formatted_address"])
+
+            _render_place_summary(prow, show_score=True)
+
+            all_mentions = load_all_mentions_by_place()
+            mentions = all_mentions.get(pid, pd.DataFrame())
+            st.write("")
+            if mentions.empty:
+                st.caption("No review mentions pain au chocolat for this place yet.")
+            else:
+                f1, f2 = st.columns(2)
+                tone = f1.radio(
+                    "Tone", ["All", "Positive", "Negative"], horizontal=True, key="mention_tone_filter"
+                )
+                sort_by = f2.selectbox(
+                    "Sort by", ["Relevance", "Most recent"], key="mention_sort_by"
+                )
+
+                if tone == "Positive":
+                    mentions = mentions[mentions["sentiment"] >= 0]
+                elif tone == "Negative":
+                    mentions = mentions[mentions["sentiment"] < 0]
+
+                if sort_by == "Most recent":
+                    mentions = mentions.sort_values("published_at", ascending=False, na_position="last")
+                else:
+                    mentions = mentions.sort_values("sentiment", ascending=False)
+
+                st.caption(f"{len(mentions)} reviews")
+                if mentions.empty:
+                    st.caption("No review matches this filter.")
+                else:
+                    with st.container(height=420, border=True):
+                        for _, m in mentions.iterrows():
+                            st.markdown(
+                                mention_card_html(
+                                    m["sentiment"],
+                                    m["text"],
+                                    m["author_name"],
+                                    rating=m.get("rating"),
+                                    relative_time=m.get("relative_time_text"),
+                                    max_chars=None,
+                                ),
+                                unsafe_allow_html=True,
+                            )
 
 with tab_ranking:
-    ranking = filtered.dropna(subset=["score_10"]).sort_values("score_10", ascending=False)
+    ranking = filtered.dropna(subset=["score_10"]).sort_values("score_10", ascending=False).copy()
+    ranking["positive_ratio"] = ranking["positive_ratio"] * 100
+    ranking["confidence"] = ranking["confidence"].map(lambda c: confidence_badge(c)[0])
     st.dataframe(
-        ranking[["name", "formatted_address", "arrondissement", "google_rating", "score_10", "confidence", "n_relevant"]],
+        ranking[
+            [
+                "name",
+                "formatted_address",
+                "arrondissement",
+                "google_rating",
+                "user_rating_count",
+                "score_10",
+                "positive_ratio",
+                "confidence",
+                "n_relevant",
+            ]
+        ],
         column_config={
-            "name": "Boulangerie",
-            "formatted_address": "Adresse",
+            "name": "Bakery",
+            "formatted_address": "Address",
             "arrondissement": st.column_config.NumberColumn("Arr.", format="%d"),
-            "google_rating": st.column_config.NumberColumn("Note Google", format="%.1f ★"),
-            "score_10": st.column_config.ProgressColumn("Score PAC", min_value=0, max_value=10, format="%.1f"),
-            "confidence": "Confiance",
-            "n_relevant": "Avis pertinents",
+            "google_rating": st.column_config.NumberColumn("Google rating", format="%.1f ★"),
+            "user_rating_count": st.column_config.NumberColumn("Google reviews (total)", format="%d"),
+            "score_10": st.column_config.ProgressColumn("PAC score", min_value=0, max_value=10, format="%.1f/10"),
+            "positive_ratio": st.column_config.NumberColumn("Positive reviews", format="%.0f%%"),
+            "confidence": "Confidence",
+            "n_relevant": "Relevant reviews",
         },
         hide_index=True,
         width="stretch",
     )
     st.download_button(
-        "⬇️ Exporter en CSV",
+        "⬇️ Export as CSV",
         ranking.to_csv(index=False).encode("utf-8"),
-        file_name="classement_pain_au_chocolat.csv",
+        file_name="paris_pain_au_chocolat_ranking.csv",
         mime="text/csv",
     )
+
+with tab_nearby:
+    st.caption(
+        "Geocoding via the French government address API (adresse.data.gouv.fr) — "
+        "any address or place name in France."
+    )
+    with st.form("nearby_form"):
+        c1, c2 = st.columns([3, 1])
+        address = c1.text_input("Address", placeholder="e.g. 10 rue de Rivoli, Paris")
+        radius_m = c2.slider("Radius (m)", 200, 2000, 800, step=100)
+        submitted = st.form_submit_button("🔍 Search")
+
+    if submitted and address.strip():
+        try:
+            geo = geocode_address(address.strip())
+        except GeocodeError as exc:
+            st.error(f"⚠️ {exc}")
+        else:
+            st.success(f"📍 {geo['formatted_address']}")
+            candidates = filtered.dropna(subset=["score_10"]).copy()
+            candidates["distance_m"] = haversine_m(
+                geo["lat"], geo["lon"], candidates["lat"], candidates["lon"]
+            )
+            nearby = candidates[candidates["distance_m"] <= radius_m].sort_values(
+                ["score_10", "distance_m"], ascending=[False, True]
+            )
+            if nearby.empty:
+                st.info(
+                    f"No scored bakery within {radius_m} m (the sidebar filters apply "
+                    "here too — try widening them, or increasing the radius)."
+                )
+            else:
+                st.caption(f"{len(nearby)} bakeries found, ranked by score.")
+                all_mentions = load_all_mentions_by_place()
+                for _, prow in nearby.head(10).iterrows():
+                    header = (
+                        f"🥐 {prow['score_10']:.1f}/10 — {prow['name']} "
+                        f"({prow['distance_m']:.0f} m)"
+                    )
+                    with st.expander(header):
+                        st.caption(prow["formatted_address"])
+                        _render_place_summary(prow, show_score=False)
+                        mentions = all_mentions.get(prow["place_id"], pd.DataFrame())
+                        with st.container(height=260, border=True):
+                            if mentions.empty:
+                                st.caption("No review mentions pain au chocolat for this place yet.")
+                            for _, m in mentions.iterrows():
+                                st.markdown(
+                                    mention_card_html(
+                                        m["sentiment"],
+                                        m["text"],
+                                        m["author_name"],
+                                        rating=m.get("rating"),
+                                        relative_time=m.get("relative_time_text"),
+                                        max_chars=None,
+                                    ),
+                                    unsafe_allow_html=True,
+                                )
 
 with tab_about:
     st.markdown(
         """
-        ### Comment le score est calculé
+        ### How the score is calculated
 
-        1. **Détection** — les avis Google mentionnant explicitement
-           *"pain au chocolat"*, *"chocolatine"* (et variantes) sont
-           repérés par mot-clé.
-        2. **Classification** — un modèle de langage lit chaque mention et
-           juge si elle parle vraiment du **goût/qualité** de la pâtisserie,
-           ou seulement de son **prix** (dans ce cas elle est exclue : un
-           avis 1★ qui se plaint du prix d'une chocolatine par ailleurs
-           décrite comme excellente ne doit pas faire baisser le score).
-        3. **Pondération** — chaque mention retenue est pondérée par la
-           crédibilité du contributeur (nombre d'avis postés, plafonné) et
-           sa fraîcheur (les avis récents comptent plus).
-        4. **Agrégation** — le score /10 d'un lieu est la moyenne pondérée
-           de ses mentions, légèrement lissée vers la moyenne parisienne
-           quand un lieu n'a qu'une ou deux mentions — **jamais** vers la
-           note Google globale du lieu : une boulangerie adorée peut très
-           bien avoir un mauvais pain au chocolat, et inversement.
+        1. **Detection** — Google reviews that explicitly mention
+           *"pain au chocolat"*, *"chocolatine"* (and variants) are
+           picked up by keyword.
+        2. **Classification** — a language model reads each mention and
+           judges whether it really talks about the **taste/quality** of the
+           pastry, or only about its **price** (in which case it is excluded:
+           a 1★ review complaining about the price of a chocolatine that is
+           otherwise described as excellent should not drag the score down).
+        3. **Weighting** — each retained mention is weighted by the
+           contributor's credibility (number of reviews posted, capped) and
+           its freshness: a review loses half its weight every year (so a
+           review from 2 years ago counts for a quarter of one posted today).
+        4. **Aggregation** — a place's score out of 10 is the weighted
+           average of its mentions, slightly smoothed toward the Paris
+           average when a place has only one or two mentions — **never**
+           toward the place's overall Google rating: a beloved bakery can
+           perfectly well have a bad pain au chocolat, and vice versa.
 
-        Un lieu sans mention pain-au-chocolat dans ses avis n'a **pas** de
-        score par défaut — il apparaît en gris sur la carte plutôt que de
-        se voir attribuer une valeur inventée.
+        A place with no pain au chocolat mention in its reviews has **no**
+        score by default — it shows up grey on the map rather than being
+        assigned a made-up value.
         """
     )

@@ -2,7 +2,14 @@
 Vérification, point 2) -- pas de test d'UI, juste la logique de couleur et
 d'extraction d'arrondissement qui alimentent la carte et le tableau."""
 
-from pac.webapp.theme import confidence_badge, extract_arrondissement, format_stars, score_to_color
+from pac.webapp.theme import (
+    confidence_badge,
+    confidence_pill_html,
+    extract_arrondissement,
+    format_percent,
+    format_stars,
+    score_to_color,
+)
 
 
 def test_score_to_color_bounds():
@@ -47,11 +54,11 @@ def test_extract_arrondissement_missing_or_invalid():
 
 def test_confidence_badge_known_and_unknown():
     label, color = confidence_badge("high")
-    assert label == "Fiable"
+    assert label == "Reliable"
     label, color = confidence_badge(None)
-    assert label == "Pas assez d'avis"
+    assert label == "Not enough reviews"
     label, color = confidence_badge("valeur-inattendue")
-    assert label == "Inconnu"
+    assert label == "Unknown"
 
 
 def test_format_stars():
@@ -59,3 +66,18 @@ def test_format_stars():
     assert format_stars(4.3) == "★★★★☆ 4.3"
     assert format_stars(5.0) == "★★★★★ 5.0"
     assert format_stars(0.4) == "☆☆☆☆☆ 0.4"
+
+
+def test_format_percent():
+    assert format_percent(None) == "—"
+    assert format_percent(float("nan")) == "—"
+    assert format_percent(0.834) == "83%"
+    assert format_percent(0) == "0%"
+
+
+def test_confidence_pill_html_handles_missing_count():
+    # NaN/None n_relevant (valeur SQL NULL après LEFT JOIN) ne doit jamais
+    # faire planter le rendu -- retombe sur 0, comme n_relevant ailleurs.
+    html = confidence_pill_html(None, float("nan"))
+    assert "0 pain au chocolat reviews" in html
+    assert "Not enough reviews" in html
