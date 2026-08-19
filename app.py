@@ -163,7 +163,7 @@ with st.sidebar:
 
     min_google_rating = st.slider("Minimum Google rating", 0.0, 5.0, 0.0, step=0.5)
     min_n_relevant = st.slider(
-        "Minimum pain-au-chocolat reviews", 0, 50, 0,
+        "Minimum pain-au-chocolat reviews", 0, 100, 0,
         help="Places with fewer than this many retained pain-au-chocolat/viennoiserie "
              "reviews are hidden -- a quick way to focus on well-established scores.",
     )
