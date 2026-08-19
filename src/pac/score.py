@@ -44,11 +44,11 @@ feuilletage, quantité de chocolat, etc.) -- PAS sur son prix, le service, ou un
 simple mention en passant sans jugement.
 
 Réponds en JSON strict avec exactement ces clés :
-{"relevant": true|false, "appreciated": true|false|null, "sentiment": <float entre -1.0 et 1.0>, "reason": "<courte justification>"}
+{"relevant": true|false, "appreciated": true|false|null, "sentiment": <float entre -1.0 et 1.0>, "signal_type": "isolated_incident"|"ongoing_pattern"|null, "aspect": "freshness"|"baking"|"chocolate_quantity"|"lamination"|"price_value"|"other"|null, "confidence": <float entre 0.0 et 1.0>, "reason": "<courte justification>"}
 
 - relevant=false si la mention parle de prix, de service, ou est neutre/sans
   jugement sur la qualité (même si l'avis global est très négatif ou positif).
-  Dans ce cas, appreciated doit être null.
+  Dans ce cas, appreciated, signal_type et aspect doivent être null.
 - Si relevant=true :
   - appreciated est un jugement NET, binaire : est-ce que la personne a
     globalement apprécié le goût/la qualité de la pâtisserie décrite (true),
@@ -57,6 +57,23 @@ Réponds en JSON strict avec exactement ces clés :
     -1.0 (détestable) à 1.0 (excellent), cohérente avec appreciated (positif
     si appreciated=true, négatif si appreciated=false) -- juge UNIQUEMENT la
     qualité de la pâtisserie décrite, pas la note globale de l'avis ni le prix.
+  - signal_type distingue un ALÉA PONCTUEL ("isolated_incident" : ce jour-là,
+    cette fournée, cette fois-ci -- ex. "j'ai eu un pain au chocolat brûlé
+    aujourd'hui") d'un CHANGEMENT DURABLE ("ongoing_pattern" : depuis, ne
+    sont plus, changement de propriétaire/recette, "ce n'est plus ce que
+    c'était", tendance décrite sur plusieurs visites). Mets "ongoing_pattern"
+    si rien n'indique explicitement un incident isolé -- c'est la valeur par
+    défaut d'une mention qui décrit un état plutôt qu'un événement précis.
+  - aspect : le CRITÈRE précis évoqué -- fraîcheur/cuisson du jour
+    (freshness), cuisson/feuilletage râté ou four (baking), quantité de
+    chocolat (chocolate_quantity), qualité du feuilletage/texture
+    (lamination), rapport qualité/prix perçu MALGRÉ un jugement sur le goût
+    (price_value -- différent de relevant=false qui exclut les plaintes de
+    prix SANS jugement sur le goût), ou "other" si aucun de ces critères ne
+    correspond clairement.
+  - confidence : à quel point TU es sûr de ce jugement (pas la confiance du
+    client) -- 1.0 si le passage est explicite et sans ambiguïté, plus bas
+    si le texte est elliptique, sarcastique, ou traduit approximativement.
 """
 
 
@@ -99,6 +116,10 @@ def _pending_mentions(con: duckdb.DuckDBPyConnection) -> list[tuple]:
     ).fetchall()
 
 
+VALID_SIGNAL_TYPES = {"isolated_incident", "ongoing_pattern"}
+VALID_ASPECTS = {"freshness", "baking", "chocolate_quantity", "lamination", "price_value", "other"}
+
+
 def _classify_one(
     client: httpx.Client, review_id: str, place_id: str, text: str, term: str, model: str
 ) -> dict:
@@ -116,6 +137,28 @@ def _classify_one(
         # sentiment pour ces cas, cf. compute_scores).
         appreciated_raw = result.get("appreciated")
         appreciated = bool(appreciated_raw) if relevant and appreciated_raw is not None else None
+
+        # signal_type/aspect : valeurs d'un enum fermé -- une valeur hors
+        # liste (hallucination, faute de frappe du modèle) retombe sur None
+        # plutôt que d'être stockée telle quelle (cf. plan : pas de valeur
+        # inventée, mais pas non plus de valeur invalide qui casserait un
+        # filtre/groupby en aval).
+        signal_type = result.get("signal_type") if relevant else None
+        signal_type = signal_type if signal_type in VALID_SIGNAL_TYPES else None
+        aspect = result.get("aspect") if relevant else None
+        aspect = aspect if aspect in VALID_ASPECTS else None
+
+        # confidence : certitude du MODÈLE dans son propre jugement (pas la
+        # confiance globale du score, déjà calculée ailleurs) -- None si
+        # absent/invalide plutôt qu'une valeur médiane inventée.
+        confidence_raw = result.get("confidence")
+        llm_confidence = None
+        if relevant and confidence_raw is not None:
+            try:
+                llm_confidence = max(0.0, min(1.0, float(confidence_raw)))
+            except (ValueError, TypeError):
+                llm_confidence = None
+
         reason = str(result.get("reason", ""))[:500]
         failed = False
     except (LLMError, ValueError, TypeError, httpx.HTTPError) as exc:
@@ -139,8 +182,8 @@ def _classify_one(
         # savait pas décoder, et le fallback écrasait 16 classifications
         # valides -- cf. plan et llm._strip_markdown_fence pour le correctif
         # racine).
-        relevant, appreciated, sentiment, reason, failed = (
-            False, None, 0.0, f"classification échouée: {exc}", True,
+        relevant, appreciated, sentiment, signal_type, aspect, llm_confidence, reason, failed = (
+            False, None, 0.0, None, None, None, f"classification échouée: {exc}", True,
         )
     return {
         "review_id": review_id,
@@ -148,6 +191,9 @@ def _classify_one(
         "relevant": relevant,
         "appreciated": appreciated,
         "sentiment": sentiment,
+        "signal_type": signal_type,
+        "aspect": aspect,
+        "llm_confidence": llm_confidence,
         "reason": reason,
         "failed": failed,
     }
@@ -182,13 +228,15 @@ def classify_mentions(con: duckdb.DuckDBPyConnection, workers: int, model: str) 
                 con.execute(
                     """
                     INSERT INTO pac_mentions
-                        (review_id, place_id, relevant, appreciated, sentiment, reason, model, classified_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        (review_id, place_id, relevant, appreciated, sentiment, signal_type,
+                         aspect, llm_confidence, reason, model, classified_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (review_id) DO NOTHING
                     """,
                     [
                         r["review_id"], r["place_id"], r["relevant"], r["appreciated"],
-                        r["sentiment"], r["reason"], model, datetime.now(timezone.utc),
+                        r["sentiment"], r["signal_type"], r["aspect"], r["llm_confidence"],
+                        r["reason"], model, datetime.now(timezone.utc),
                     ],
                 )
                 n_done += 1
@@ -258,10 +306,14 @@ def verify_anomalies(con: duckdb.DuckDBPyConnection, workers: int, model: str) -
                 con.execute(
                     """
                     UPDATE pac_mentions
-                    SET relevant = ?, appreciated = ?, sentiment = ?, reason = ?, model = ?, verified = true
+                    SET relevant = ?, appreciated = ?, sentiment = ?, signal_type = ?,
+                        aspect = ?, llm_confidence = ?, reason = ?, model = ?, verified = true
                     WHERE review_id = ?
                     """,
-                    [r["relevant"], r["appreciated"], r["sentiment"], r["reason"], model, r["review_id"]],
+                    [
+                        r["relevant"], r["appreciated"], r["sentiment"], r["signal_type"],
+                        r["aspect"], r["llm_confidence"], r["reason"], model, r["review_id"],
+                    ],
                 )
                 n_updated += 1
     return n_updated
@@ -321,6 +373,19 @@ CONFIDENCE_MEDIUM_WEIGHT = 6.0
 # positive_ratio (seuil à 0).
 SENTIMENT_WINSOR_FLOOR = -0.8
 
+# signal_type (cf. plan, cas réel "Blé Sucré" : plusieurs avis décrivaient
+# explicitement un changement de propriétaire et un déclin durable, mêlés à
+# des incidents ponctuels comme "j'ai eu un pain brûlé aujourd'hui" -- les
+# deux comptaient pareil dans le score alors qu'ils portent une information
+# très différente). Un incident isolé est amorti (poids réduit) : il en dit
+# peu sur l'état ACTUEL du lieu. Une tendance durable est renforcée (poids
+# accru) : c'est justement le signal le plus informatif sur ce qu'un client
+# doit attendre aujourd'hui. NULL (mention non pertinente, ou classifiée
+# avant l'introduction de ce champ) -> poids neutre (1.0), ni renforcé ni
+# amorti.
+ISOLATED_INCIDENT_WEIGHT = 0.6
+ONGOING_PATTERN_WEIGHT = 1.3
+
 
 def compute_scores(con: duckdb.DuckDBPyConnection) -> int:
     """Étage 3 : agrégation pondérée en SQL (cf. plan pour la justification
@@ -341,6 +406,12 @@ def compute_scores(con: duckdb.DuckDBPyConnection) -> int:
                 least(ln(1 + coalesce(r.author_review_count, 0)), {REVIEWER_WEIGHT_CAP})
                     * pow(0.5, (epoch(current_timestamp) - r.published_at) / 86400.0 / {RECENCY_HALFLIFE_DAYS})
                     * CASE WHEN mr.matched_term IN ({generic_terms_sql}) THEN {GENERIC_TERM_WEIGHT} ELSE 1.0 END
+                    * CASE m.signal_type
+                          WHEN 'isolated_incident' THEN {ISOLATED_INCIDENT_WEIGHT}
+                          WHEN 'ongoing_pattern' THEN {ONGOING_PATTERN_WEIGHT}
+                          ELSE 1.0
+                      END
+                    * coalesce(m.llm_confidence, 1.0)
                     AS weight
             FROM pac_mentions m
             JOIN reviews r ON r.review_id = m.review_id

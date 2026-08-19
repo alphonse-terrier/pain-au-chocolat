@@ -57,6 +57,9 @@ CREATE TABLE IF NOT EXISTS pac_mentions (
     appreciated BOOLEAN,    -- jugement net apprécié/pas apprécié (NULL si non pertinent,
                              -- ou si classifié avant l'introduction de ce champ)
     sentiment DOUBLE,       -- -1 (mauvais) .. +1 (excellent), spécifique à la mention
+    signal_type VARCHAR,    -- 'isolated_incident' | 'ongoing_pattern' | NULL
+    aspect VARCHAR,         -- 'freshness'|'baking'|'chocolate_quantity'|'lamination'|'price_value'|'other'|NULL
+    llm_confidence DOUBLE,  -- certitude du modèle dans SON jugement (0..1), pas la confiance du score
     reason VARCHAR,
     model VARCHAR,
     verified BOOLEAN DEFAULT false,  -- repassé par verify_anomalies (second avis, modèle plus fort)
@@ -82,6 +85,9 @@ MIGRATIONS = [
     "ALTER TABLE pac_mentions ADD COLUMN IF NOT EXISTS verified BOOLEAN DEFAULT false",
     "ALTER TABLE pac_scores ADD COLUMN IF NOT EXISTS positive_ratio DOUBLE",
     "ALTER TABLE pac_mentions ADD COLUMN IF NOT EXISTS appreciated BOOLEAN",
+    "ALTER TABLE pac_mentions ADD COLUMN IF NOT EXISTS signal_type VARCHAR",
+    "ALTER TABLE pac_mentions ADD COLUMN IF NOT EXISTS aspect VARCHAR",
+    "ALTER TABLE pac_mentions ADD COLUMN IF NOT EXISTS llm_confidence DOUBLE",
 ]
 
 
