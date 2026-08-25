@@ -467,6 +467,21 @@ ASPECT_SPECIFICITY_BONUS = 1.15
 # affiché en tête de fiche (cf. plan).
 MIN_ASPECT_MENTIONS = 3
 
+# Décision révisée de l'utilisateur (la version précédente excluait
+# délibérément la note Google globale, cf. l'ancien commentaire ci-dessus
+# sur le lissage) : la note Google du lieu compte maintenant un peu dans
+# le score final -- un léger mélange DIRECT sur le score déjà agrégé, pas
+# une modification du prior de lissage (SHRINKAGE_K continue de lisser
+# vers la moyenne parisienne des mentions, jamais vers la note du lieu :
+# ce mécanisme-là reste inchangé et protège toujours les lieux à peu de
+# mentions contre un score fantaisiste). Le mélange ne s'applique que si
+# le lieu a une note Google ET un score pain-au-chocolat calculable ; pas
+# de valeur inventée pour un lieu sans mention. 20% : un vrai effet
+# perceptible sur un classement serré, mais un pain au chocolat vraiment
+# raté dans une boulangerie adorée (4.8★) doit rester nettement en
+# dessous d'un bon pain au chocolat dans une boulangerie moyenne (3.5★).
+GOOGLE_RATING_BLEND_WEIGHT = 0.2
+
 
 def compute_scores(con: duckdb.DuckDBPyConnection) -> int:
     """Étage 3 : agrégation pondérée en SQL (cf. plan pour la justification
@@ -518,66 +533,88 @@ def compute_scores(con: duckdb.DuckDBPyConnection) -> int:
         f"""
         INSERT INTO pac_scores (place_id, name, n_mentions_total, n_relevant, score_10, confidence, positive_ratio)
         SELECT
-            p.place_id,
-            p.name,
-            coalesce(raw.n_total, 0) AS n_mentions_total,
-            coalesce(w.n_relevant, 0) AS n_relevant,
+            place_id,
+            name,
+            n_mentions_total,
+            n_relevant,
+            -- Mélange léger avec la note Google globale du lieu, appliqué
+            -- DIRECTEMENT sur le score déjà agrégé (pas une modification du
+            -- prior de lissage ci-dessus, qui continue à lisser vers la
+            -- moyenne parisienne des mentions, jamais vers la note du lieu
+            -- -- cf. commentaire sur GOOGLE_RATING_BLEND_WEIGHT). Jamais de
+            -- mélange si le lieu n'a pas de note Google ou pas de score
+            -- pain-au-chocolat calculable : pas de valeur inventée.
             CASE
-                -- sum_weight = 0 (ex: seule(s) mention(s) d'un lieu postée(s)
-                -- par un compte à 0 avis publiés -> poids crédibilité nul) ->
-                -- raw_score/positive_ratio seraient 0/0 = NaN, pas NULL, en
-                -- SQL flottant -- un NaN traverse `WHERE score_10 IS NOT
-                -- NULL` (NaN != NULL) et pollue tout avg() en aval (bug réel
-                -- rencontré : KPI "score moyen" affichait NaN/10). On traite
-                -- explicitement ce cas comme un lieu sans score exploitable,
-                -- pas différent de n_relevant=0.
-                WHEN coalesce(w.n_relevant, 0) = 0 OR coalesce(w.sum_weight, 0) = 0 THEN NULL
-                ELSE (
-                    (
-                        w.n_relevant * (
-                            {1 - POSITIVE_RATIO_WEIGHT} * w.raw_score
-                            + {POSITIVE_RATIO_WEIGHT} * (2 * w.positive_ratio - 1)
-                        )
-                        + {SHRINKAGE_K} * {prior_global}
-                    ) / (w.n_relevant + {SHRINKAGE_K})
-                    + 1
-                ) * 5
+                WHEN pac_score_10 IS NULL THEN NULL
+                WHEN google_rating IS NULL THEN pac_score_10
+                ELSE {1 - GOOGLE_RATING_BLEND_WEIGHT} * pac_score_10 + {GOOGLE_RATING_BLEND_WEIGHT} * (google_rating * 2)
             END AS score_10,
-            CASE
-                WHEN coalesce(w.sum_weight, 0) = 0 THEN 'insufficient_data'
-                WHEN w.sum_weight < {CONFIDENCE_LOW_WEIGHT} THEN 'low'
-                WHEN w.sum_weight < {CONFIDENCE_MEDIUM_WEIGHT} THEN 'medium'
-                ELSE 'high'
-            END AS confidence,
-            w.positive_ratio
-        FROM places p
-        LEFT JOIN (
-            SELECT place_id, count(*) AS n_total FROM pac_mentions_raw GROUP BY place_id
-        ) raw ON raw.place_id = p.place_id
-        LEFT JOIN (
+            confidence,
+            positive_ratio
+        FROM (
             SELECT
-                place_id,
-                count(*) AS n_relevant,
-                sum(weight) AS sum_weight,
-                -- nullif(sum(weight), 0) : un poids total nul (mention(s)
-                -- postée(s) uniquement par des comptes à 0 avis publiés,
-                -- cf. commentaire sur score_10 ci-dessus) donnerait 0/0 = NaN
-                -- plutôt que NULL en SQL flottant -- on force explicitement
-                -- NULL, jamais un NaN qui traverserait silencieusement les
-                -- filtres IS NOT NULL en aval.
-                sum(sentiment * weight) / nullif(sum(weight), 0) AS raw_score,
-                -- `appreciated` (jugement net du LLM) prime sur le seuil
-                -- sentiment >= 0 quand il est disponible -- plus robuste
-                -- qu'un simple seuil sur une note continue (cf. plan).
-                sum(
-                    CASE
-                        WHEN appreciated IS NOT NULL THEN CASE WHEN appreciated THEN weight ELSE 0 END
-                        WHEN sentiment >= 0 THEN weight
-                        ELSE 0
-                    END
-                ) / nullif(sum(weight), 0) AS positive_ratio
-            FROM _weighted GROUP BY place_id
-        ) w ON w.place_id = p.place_id
+                p.place_id,
+                p.name,
+                p.rating AS google_rating,
+                coalesce(raw.n_total, 0) AS n_mentions_total,
+                coalesce(w.n_relevant, 0) AS n_relevant,
+                CASE
+                    -- sum_weight = 0 (ex: seule(s) mention(s) d'un lieu postée(s)
+                    -- par un compte à 0 avis publiés -> poids crédibilité nul) ->
+                    -- raw_score/positive_ratio seraient 0/0 = NaN, pas NULL, en
+                    -- SQL flottant -- un NaN traverse `WHERE score_10 IS NOT
+                    -- NULL` (NaN != NULL) et pollue tout avg() en aval (bug réel
+                    -- rencontré : KPI "score moyen" affichait NaN/10). On traite
+                    -- explicitement ce cas comme un lieu sans score exploitable,
+                    -- pas différent de n_relevant=0.
+                    WHEN coalesce(w.n_relevant, 0) = 0 OR coalesce(w.sum_weight, 0) = 0 THEN NULL
+                    ELSE (
+                        (
+                            w.n_relevant * (
+                                {1 - POSITIVE_RATIO_WEIGHT} * w.raw_score
+                                + {POSITIVE_RATIO_WEIGHT} * (2 * w.positive_ratio - 1)
+                            )
+                            + {SHRINKAGE_K} * {prior_global}
+                        ) / (w.n_relevant + {SHRINKAGE_K})
+                        + 1
+                    ) * 5
+                END AS pac_score_10,
+                CASE
+                    WHEN coalesce(w.sum_weight, 0) = 0 THEN 'insufficient_data'
+                    WHEN w.sum_weight < {CONFIDENCE_LOW_WEIGHT} THEN 'low'
+                    WHEN w.sum_weight < {CONFIDENCE_MEDIUM_WEIGHT} THEN 'medium'
+                    ELSE 'high'
+                END AS confidence,
+                w.positive_ratio
+            FROM places p
+            LEFT JOIN (
+                SELECT place_id, count(*) AS n_total FROM pac_mentions_raw GROUP BY place_id
+            ) raw ON raw.place_id = p.place_id
+            LEFT JOIN (
+                SELECT
+                    place_id,
+                    count(*) AS n_relevant,
+                    sum(weight) AS sum_weight,
+                    -- nullif(sum(weight), 0) : un poids total nul (mention(s)
+                    -- postée(s) uniquement par des comptes à 0 avis publiés,
+                    -- cf. commentaire sur pac_score_10 ci-dessus) donnerait 0/0
+                    -- = NaN plutôt que NULL en SQL flottant -- on force
+                    -- explicitement NULL, jamais un NaN qui traverserait
+                    -- silencieusement les filtres IS NOT NULL en aval.
+                    sum(sentiment * weight) / nullif(sum(weight), 0) AS raw_score,
+                    -- `appreciated` (jugement net du LLM) prime sur le seuil
+                    -- sentiment >= 0 quand il est disponible -- plus robuste
+                    -- qu'un simple seuil sur une note continue (cf. plan).
+                    sum(
+                        CASE
+                            WHEN appreciated IS NOT NULL THEN CASE WHEN appreciated THEN weight ELSE 0 END
+                            WHEN sentiment >= 0 THEN weight
+                            ELSE 0
+                        END
+                    ) / nullif(sum(weight), 0) AS positive_ratio
+                FROM _weighted GROUP BY place_id
+            ) w ON w.place_id = p.place_id
+        )
         """
     )
     n_scored = con.execute("SELECT count(*) FROM pac_scores WHERE score_10 IS NOT NULL").fetchone()[0]

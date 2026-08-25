@@ -416,7 +416,10 @@ with tab_about:
            slightly smoothed toward the Paris average when a place has only
            one or two mentions — **never** toward the place's overall
            Google rating: a beloved bakery can perfectly well have a bad
-           pain au chocolat, and vice versa.
+           pain au chocolat, and vice versa. That blended score is then
+           nudged by the place's overall Google rating, but only a
+           little — it counts for 20% of the final number, a minority
+           vote rather than a second opinion.
 
         A place with no pain au chocolat mention in its reviews has **no**
         score by default — it shows up grey on the map rather than being

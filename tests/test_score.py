@@ -128,12 +128,15 @@ def test_old_review_weighted_less_than_recent(con):
     assert score < 5.0
 
 
-def test_score_never_shrinks_toward_place_overall_rating(con):
-    """Décision explicite de l'utilisateur : le retrait bayésien lisse vers
-    le prior global (moyenne des mentions sur tout Paris), jamais vers la
-    note Google globale du lieu lui-même. Un lieu très bien noté globalement
-    mais avec une seule mention très négative doit rester bas, pas être tiré
-    vers le haut par sa note globale de 4.0/5."""
+def test_shrinkage_still_uses_paris_prior_not_the_place_rating(con):
+    """Le retrait bayésien (SHRINKAGE_K) lisse vers le prior global (moyenne
+    des mentions sur tout Paris), jamais vers la note Google globale du
+    lieu lui-même -- ce mécanisme reste inchangé. La note Google du lieu
+    intervient séparément, en aval, via un léger mélange final borné
+    (GOOGLE_RATING_BLEND_WEIGHT) -- pas via le prior de lissage. Un lieu
+    très bien noté globalement mais avec une seule mention très négative
+    doit donc rester nettement bas, pas tiré vers le haut par sa note
+    globale de 4.9/5 malgré le mélange."""
     _insert_place(con, "p1", "Boulangerie Adorée Mais Pain Au Chocolat Raté")
     con.execute("UPDATE places SET rating = 4.9 WHERE place_id = 'p1'")
     _insert_review(con, "r1", "p1", author_review_count=50, published_at=NOW)
@@ -141,9 +144,47 @@ def test_score_never_shrinks_toward_place_overall_rating(con):
 
     compute_scores(con)
     score = con.execute("SELECT score_10 FROM pac_scores WHERE place_id='p1'").fetchone()[0]
-    # Si le lissage tirait vers rating=4.9/5 (~8/10), le score serait poussé
-    # bien au-dessus de 5 malgré l'avis très négatif -- ça ne doit pas arriver.
+    # Si le lissage (ou le mélange final) tirait fortement vers rating=4.9/5
+    # (~9.8/10), le score serait poussé bien au-dessus de 5 malgré l'avis
+    # très négatif -- ça ne doit pas arriver, le mélange doit rester léger.
     assert score < 4.0
+
+
+def test_google_rating_nudges_score_but_stays_a_minority(con):
+    """Décision révisée de l'utilisateur : la note Google globale compte
+    maintenant un peu (GOOGLE_RATING_BLEND_WEIGHT). Deux lieux avec des
+    mentions IDENTIQUES mais des notes Google différentes doivent finir
+    avec des scores légèrement différents, dans le sens attendu -- mais
+    l'écart doit rester modeste (le mélange est une petite pondération,
+    pas un second vote à parts égales)."""
+    for place_id, rating in (("p_high", 4.8), ("p_low", 3.0)):
+        _insert_place(con, place_id, f"Boulangerie {place_id}")
+        con.execute("UPDATE places SET rating = ? WHERE place_id = ?", [rating, place_id])
+        for i in range(4):
+            _insert_review(con, f"{place_id}-r{i}", place_id, author_review_count=20, published_at=NOW)
+            _insert_mention(con, f"{place_id}-r{i}", place_id, relevant=True, sentiment=0.5)
+
+    compute_scores(con)
+    score_high = con.execute("SELECT score_10 FROM pac_scores WHERE place_id='p_high'").fetchone()[0]
+    score_low = con.execute("SELECT score_10 FROM pac_scores WHERE place_id='p_low'").fetchone()[0]
+
+    assert score_high > score_low  # la meilleure note Google penche le score vers le haut
+    assert score_high - score_low < 1.0  # mais l'effet reste modeste, pas déterminant
+
+
+def test_no_google_rating_leaves_score_untouched(con):
+    """Un lieu sans note Google (rating NULL) ne doit pas voir son score
+    modifié par une valeur inventée -- le mélange est simplement absent."""
+    _insert_place(con, "p1", "Boulangerie Sans Note Google")
+    con.execute("UPDATE places SET rating = NULL WHERE place_id = 'p1'")
+    for i in range(3):
+        _insert_review(con, f"r{i}", "p1", author_review_count=20, published_at=NOW)
+        _insert_mention(con, f"r{i}", "p1", relevant=True, sentiment=0.7)
+
+    compute_scores(con)
+    score = con.execute("SELECT score_10 FROM pac_scores WHERE place_id='p1'").fetchone()[0]
+    assert score is not None
+    assert 6.0 < score < 10.0  # un score plausible pour des mentions positives, non altéré
 
 
 def test_verify_anomalies_selects_only_strong_disagreement(con, monkeypatch):

@@ -24,7 +24,7 @@ const STEPS = [
   {
     icon: "🏆",
     title: "Aggregation",
-    body: "The final score blends weighted sentiment with the share of positive mentions, smoothed toward the Paris average for places with very few reviews, never toward their overall Google rating.",
+    body: "The score blends weighted sentiment with the share of positive mentions, smoothed toward the Paris average for places with very few reviews (never toward their own Google rating). The bakery's overall Google rating is then folded in at just 20%, a light nudge rather than a second vote.",
   },
 ];
 
