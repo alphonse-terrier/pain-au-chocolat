@@ -111,6 +111,10 @@
   white-space: normal;
   max-width: 28ch;
 }
+.wrap td[data-key="address"] {
+  white-space: normal;
+  max-width: 22ch;
+}
 
 .count {
   padding: var(--sp-2) var(--sp-3);

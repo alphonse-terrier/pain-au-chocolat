@@ -62,7 +62,7 @@ export default function NearbyResultCard({
         aria-controls={reviewsId}
         onClick={() => setOpen((v) => !v)}
       >
-        {open ? "Hide reviews" : `Show ${place.n_relevant} reviews`}
+        {open ? "Enough, thanks" : `Read the ${place.n_relevant} reviews`}
       </Button>
       <div id={reviewsId} className={styles.reveal} data-open={open || undefined}>
         <div className={styles.revealInner}>

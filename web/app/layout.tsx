@@ -6,7 +6,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "The best pain au chocolat in Paris",
   description:
-    "Where to find the best pain au chocolat in Paris, scored from the Google reviews that actually talk about it, not from the bakery's overall rating.",
+    "The internet's most scientific ranking of Paris bakeries, based purely on who nails the pain au chocolat, not on how nice the croissants look on Instagram.",
 };
 
 // viewportFit: "cover" is required for env(safe-area-inset-*) to resolve

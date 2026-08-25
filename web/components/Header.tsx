@@ -10,7 +10,10 @@ export default function Header({ actions }: { actions?: ReactNode }) {
         </h1>
         {actions}
       </div>
-      <p className={styles.caption}>Scored from the Google reviews that actually talk about it, not the bakery&apos;s overall rating.</p>
+      <p className={styles.caption}>
+        A very important, extremely serious ranking of who&apos;s actually good at pastry, not just good at getting
+        five stars.
+      </p>
     </header>
   );
 }

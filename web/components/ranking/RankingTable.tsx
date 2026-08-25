@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import type { Place } from "@/lib/types";
 import { RANKING_COLUMNS, sortPlaces } from "@/lib/ranking";
-import { formatPercent, formatStars } from "@/lib/theme";
+import { formatPercent, formatStars, scoreToColor } from "@/lib/theme";
 import { formatInt } from "@/lib/format";
 import ScoreBar from "./ScoreBar";
 import ConfidencePill from "../detail/ConfidencePill";
@@ -26,6 +26,15 @@ export default function RankingTable({
   const isTopRank = sort === "score_10" && dir === "desc";
 
   function renderCell(col: (typeof RANKING_COLUMNS)[number], p: Place) {
+    if (col.isAspect) {
+      const v = col.get(p) as number | null;
+      if (v === null) return <span className="tnum">—</span>;
+      return (
+        <span className="tnum" style={{ color: scoreToColor(v), fontWeight: 600 }}>
+          {v.toFixed(1)}
+        </span>
+      );
+    }
     switch (col.key) {
       case "name":
         return (
@@ -95,7 +104,7 @@ export default function RankingTable({
                 {isTopRank && i < 3 ? <span className={styles.topBadge}>{i + 1}</span> : i + 1}
               </td>
               {RANKING_COLUMNS.map((c) => (
-                <td key={c.key} data-priority={c.priority}>
+                <td key={c.key} data-priority={c.priority} data-key={c.key}>
                   {renderCell(c, p)}
                 </td>
               ))}

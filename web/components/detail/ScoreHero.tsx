@@ -11,7 +11,7 @@ export default function ScoreHero({ score }: { score: number | null }) {
         <div className={styles.numeral} style={{ color: "var(--text-tertiary)" }}>
           —
         </div>
-        <p className={styles.noScore}>No pain au chocolat mention in the reviews yet</p>
+        <p className={styles.noScore}>Nobody has mentioned pain au chocolat here. Suspicious, honestly.</p>
       </div>
     );
   }

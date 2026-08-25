@@ -17,6 +17,15 @@ export interface Place {
   n_relevant: number;
   positive_ratio: number | null;
   arrondissement: number | null;
+  // Score /10 secondaire par critère qualité, en plus de score_10 --
+  // jamais à sa place. NULL si le critère n'est couvert par aucune (ou
+  // trop peu de) mention pour ce lieu.
+  asp_freshness: number | null;
+  asp_baking: number | null;
+  asp_chocolate_quantity: number | null;
+  asp_lamination: number | null;
+  asp_price_value: number | null;
+  asp_other: number | null;
 }
 
 export interface PlacesMeta {

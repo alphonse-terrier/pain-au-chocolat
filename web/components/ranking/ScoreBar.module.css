@@ -22,6 +22,8 @@
 .label {
   font-size: var(--text-xs);
   white-space: nowrap;
+  min-width: 40px;
+  text-align: right;
 }
 
 .lg .track {

@@ -1,50 +1,30 @@
 import type { PlacesMeta } from "@/lib/types";
 import { scoreToColor } from "@/lib/theme";
 import { formatDate, formatInt } from "@/lib/format";
-import Alert from "../ui/Alert";
+import ScoreLegend from "../ui/ScoreLegend";
 import KpiCard from "./KpiCard";
 import styles from "./MethodologyTab.module.css";
 
 const STEPS = [
   {
+    icon: "🔍",
     title: "Detection",
-    body: (
-      <>
-        Google reviews that explicitly mention <em>&quot;pain au chocolat&quot;</em>, <em>&quot;chocolatine&quot;</em>{" "}
-        (and variants) are picked up by keyword.
-      </>
-    ),
+    body: "Reviews mentioning “pain au chocolat” or “chocolatine” (typos included) are found by keyword.",
   },
   {
+    icon: "⚖️",
     title: "Classification",
-    body: (
-      <>
-        A language model reads each mention and judges whether it really talks about the <strong>taste/quality</strong> of
-        the pastry, or only about its <strong>price</strong> (in which case it is excluded: a 1★ review complaining
-        about the price of a chocolatine that is otherwise described as excellent should not drag the score down).
-      </>
-    ),
+    body: "A language model checks whether the mention is really about taste, not just price, and gives a quick yes/no on whether the reviewer liked it.",
   },
   {
+    icon: "🤝",
     title: "Weighting",
-    body: (
-      <>
-        Each retained mention is weighted by the contributor&apos;s credibility (number of reviews posted, capped) and
-        its freshness: a review loses half its weight every year (so a review from 2 years ago counts for a quarter of
-        one posted today).
-      </>
-    ),
+    body: "Each mention is weighted by the reviewer's credibility, how recent it is, how precise its criticism is, and whether it describes a one-off slip or a lasting pattern.",
   },
   {
+    icon: "🏆",
     title: "Aggregation",
-    body: (
-      <>
-        A place&apos;s score out of 10 is the weighted average of its mentions, slightly smoothed toward the Paris
-        average when a place has only one or two mentions. It is <strong>never</strong> smoothed toward the
-        place&apos;s overall Google rating: a beloved bakery can perfectly well have a bad pain au chocolat, and vice
-        versa.
-      </>
-    ),
+    body: "The final score blends weighted sentiment with the share of positive mentions, smoothed toward the Paris average for places with very few reviews, never toward their overall Google rating.",
   },
 ];
 
@@ -53,47 +33,60 @@ export default function MethodologyTab({ meta }: { meta: PlacesMeta }) {
 
   return (
     <div className={styles.page}>
-      <section className={styles.intro}>
-        <h2 className={styles.pageHeading}>About this ranking</h2>
-        <p className={styles.introText}>
-          Where to find the best pain au chocolat in Paris, scored from the Google reviews that actually talk about
-          it, not from the bakery&apos;s overall rating.
-        </p>
-      </section>
+      <h2 className={styles.pageHeading}>How the score works</h2>
+      <p className={styles.introText}>
+        Scored from the Google reviews that actually talk about the pastry, not from the bakery&apos;s overall
+        rating.
+      </p>
 
-      <section className={styles.section}>
-        <h3 className={styles.sectionHeading}>Coverage</h3>
-        <div className={styles.kpis}>
-          <KpiCard value={formatInt(meta.n_places)} label="Bakeries loaded" />
-          <KpiCard
-            value={avgScore}
-            unit="/10"
-            label="Weighted average score"
-            accentColor={scoreToColor(meta.avg_score)}
-          />
-          <KpiCard value={`${meta.coverage_pct.toFixed(0)}`} unit="%" label="Places with a score" />
-          <KpiCard value={formatInt(meta.n_reviews)} label="Reviews analysed" />
-        </div>
-        <p className={styles.lastReview}>Last review collected: {formatDate(meta.last_review_at)}</p>
-      </section>
-
-      <hr className={styles.divider} />
-
-      <section className={styles.section}>
-        <h3 className={styles.sectionHeading}>How the score is calculated</h3>
-        <ol className={styles.stepper}>
-          {STEPS.map((step) => (
+      <div className={styles.layout}>
+        <ol className={styles.steps}>
+          {STEPS.map((step, i) => (
             <li key={step.title} className={styles.step}>
-              <h4 className={styles.stepTitle}>{step.title}</h4>
-              <p className={styles.stepBody}>{step.body}</p>
+              <span className={styles.stepIcon} aria-hidden="true">
+                {step.icon}
+              </span>
+              <div>
+                <h3 className={styles.stepTitle}>
+                  <span className={styles.stepNumber}>{i + 1}</span>
+                  {step.title}
+                </h3>
+                <p className={styles.stepBody}>{step.body}</p>
+              </div>
             </li>
           ))}
         </ol>
-        <Alert tone="info">
-          A place with no pain au chocolat mention in its reviews has <strong>no</strong> score by default. It shows
-          up grey on the map rather than being assigned a made-up value.
-        </Alert>
-      </section>
+
+        <aside className={styles.sidebar}>
+          <div className={styles.kpis}>
+            <KpiCard value={formatInt(meta.n_places)} label="Bakeries" icon="🥐" />
+            <KpiCard
+              value={avgScore}
+              unit="/10"
+              label="Avg. score"
+              icon="⭐"
+              accentColor={scoreToColor(meta.avg_score)}
+            />
+            <KpiCard value={`${meta.coverage_pct.toFixed(0)}`} unit="%" label="Scored" icon="📊" />
+            <KpiCard value={formatInt(meta.n_reviews)} label="Reviews" icon="💬" />
+          </div>
+          <p className={styles.lastReview}>Last review collected: {formatDate(meta.last_review_at)}</p>
+
+          <div className={styles.legendCard}>
+            <p className={styles.legendCaption}>What the map colors mean</p>
+            <ScoreLegend />
+            <p className={styles.caveat}>
+              No mention of pain au chocolat means <strong>no score</strong>, shown grey rather than guessed.
+            </p>
+          </div>
+        </aside>
+      </div>
+
+      <p className={styles.aside}>
+        Each mention is also tagged with what it praises or criticizes (freshness, baking, chocolate amount,
+        lamination, value for money). Once a place has 3+ mentions on the same criterion, that shows up as its own
+        mini score under &quot;Strengths &amp; weaknesses&quot; and in the leaderboard.
+      </p>
     </div>
   );
 }

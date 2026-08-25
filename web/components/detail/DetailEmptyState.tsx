@@ -16,11 +16,11 @@ export default function DetailEmptyState({
 }) {
   return (
     <div className={styles.wrap}>
-      <p className={styles.instruction}>👉 Click a marker on the map to see its reviews here.</p>
+      <p className={styles.instruction}>👉 Poke a marker on the map to meet its reviews.</p>
       <ScoreLegend />
       {topPlaces.length > 0 && (
         <div className={styles.topList}>
-          <h3 className={styles.topHeading}>Top rated in this view</h3>
+          <h3 className={styles.topHeading}>Top 20 in this view</h3>
           <ol className={styles.list}>
             {topPlaces.map((p, i) => (
               <li key={p.place_id}>

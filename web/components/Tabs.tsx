@@ -3,9 +3,9 @@ import styles from "./Tabs.module.css";
 
 const LABELS: Record<Tab, { full: string; short: string }> = {
   map: { full: "Map", short: "Map" },
-  ranking: { full: "Ranking", short: "Ranking" },
-  nearby: { full: "Near an address", short: "Nearby" },
-  about: { full: "Methodology", short: "About" },
+  ranking: { full: "Leaderboard", short: "Ranking" },
+  nearby: { full: "Near me", short: "Nearby" },
+  about: { full: "The Fine Print", short: "About" },
 };
 
 const ORDER: Tab[] = ["map", "ranking", "nearby", "about"];

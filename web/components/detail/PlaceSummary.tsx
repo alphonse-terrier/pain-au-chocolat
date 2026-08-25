@@ -2,6 +2,7 @@ import type { Place } from "@/lib/types";
 import { formatPercent } from "@/lib/theme";
 import ScoreHero from "./ScoreHero";
 import ConfidencePill from "./ConfidencePill";
+import AspectBreakdown from "./AspectBreakdown";
 import styles from "./PlaceSummary.module.css";
 
 /** Score hero + secondary metrics + confidence + Google Maps link --
@@ -27,9 +28,10 @@ export default function PlaceSummary({ place, showScore }: { place: Place; showS
         <ConfidencePill confidence={place.confidence} />
         <span className={styles.reviewCount}>{place.n_relevant} pain au chocolat reviews</span>
       </div>
+      <AspectBreakdown place={place} />
       {place.maps_uri && (
         <a className={styles.mapsBtn} href={place.maps_uri} target="_blank" rel="noreferrer">
-          View on Google Maps →
+          Go see it in person →
         </a>
       )}
     </div>

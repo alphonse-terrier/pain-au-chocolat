@@ -69,8 +69,8 @@ export default function ReviewList({
   if (reviews.length === 0) {
     return (
       <EmptyState
-        title="No pain au chocolat mentions"
-        body="This bakery's reviews never mention pain au chocolat, so it has no score."
+        title="Radio silence on the pastry front"
+        body="Nobody's reviews mention pain au chocolat here, so this place stays a mystery (and unscored)."
       />
     );
   }
@@ -102,7 +102,15 @@ export default function ReviewList({
       )}
       <div className={`${styles.scroll} ${compact ? styles.scrollSmall : ""}`}>
         {shown.length === 0 ? (
-          <EmptyState title="No review matches this filter" action={<button type="button" className={styles.resetTone} onClick={() => setTone("all")}>Show all</button>} />
+          <EmptyState
+            title="Crickets"
+            body="Nothing in that mood right now."
+            action={
+              <button type="button" className={styles.resetTone} onClick={() => setTone("all")}>
+                Show everything
+              </button>
+            }
+          />
         ) : (
           shown.map((r, i) => <ReviewCard key={`${r.a ?? ""}-${r.p ?? i}-${r.t?.slice(0, 20) ?? i}`} review={r} />)
         )}

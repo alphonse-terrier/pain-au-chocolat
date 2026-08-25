@@ -1,12 +1,23 @@
 import type { Place } from "./types";
-import { confidenceBadge, formatPercent, formatStars } from "./theme";
+import { ASPECT_LABELS, confidenceBadge, formatPercent, formatStars } from "./theme";
 
 export interface RankingColumn {
   key: string;
   label: string;
   priority: 1 | 2 | 3; // 1 = always shown, 3 = hidden first on narrow screens
   get: (p: Place) => number | string | null;
+  /** Marks the 6 "Strengths & weaknesses" sub-scores -- rendered tinted by
+   * scoreToColor in RankingTable, same as the main score column. */
+  isAspect?: boolean;
 }
+
+const ASPECT_KEYS = [
+  "asp_freshness",
+  "asp_baking",
+  "asp_chocolate_quantity",
+  "asp_lamination",
+  "asp_price_value",
+] as const;
 
 export const RANKING_COLUMNS: RankingColumn[] = [
   { key: "name", label: "Bakery", priority: 1, get: (p) => p.name },
@@ -18,6 +29,15 @@ export const RANKING_COLUMNS: RankingColumn[] = [
   { key: "positive_ratio", label: "Positive reviews", priority: 2, get: (p) => p.positive_ratio },
   { key: "confidence", label: "Confidence", priority: 2, get: (p) => p.confidence },
   { key: "n_relevant", label: "PAC mentions", priority: 2, get: (p) => p.n_relevant },
+  ...ASPECT_KEYS.map(
+    (key): RankingColumn => ({
+      key,
+      label: ASPECT_LABELS[key.slice(4)] ?? key,
+      priority: 3,
+      isAspect: true,
+      get: (p) => p[key],
+    })
+  ),
 ];
 
 export function sortPlaces(places: Place[], sort: string, dir: "asc" | "desc"): Place[] {

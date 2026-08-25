@@ -67,7 +67,7 @@ export default function NearbyTab({
   return (
     <div className={styles.wrap}>
       <div className={styles.card}>
-        <h2 className={styles.heading}>Find the best pain au chocolat near you</h2>
+        <h2 className={styles.heading}>Emergency pain au chocolat locator</h2>
         <form className={styles.form} onSubmit={handleSubmit}>
           <div className={styles.addressRow}>
             <div className={styles.addressField}>
@@ -109,7 +109,7 @@ export default function NearbyTab({
             />
           </div>
         </form>
-        <p className={styles.caption}>Geocoding via adresse.data.gouv.fr, works for any address or place name in France.</p>
+        <p className={styles.caption}>Powered by the French government&apos;s address API. Works anywhere in France, no croissant required to use it.</p>
       </div>
 
       {error && <Alert tone="error">⚠️ {error}</Alert>}
@@ -132,8 +132,8 @@ export default function NearbyTab({
 
       {!pending && searched && geo && nearby.length === 0 && (
         <EmptyState
-          title="No scored bakery in range"
-          body={`Nothing within ${effectiveRadius} m. The sidebar filters apply here too.`}
+          title="A pastry desert"
+          body={`Nothing scored within ${effectiveRadius} m. Time to widen the search, or move house.`}
           action={
             <Button variant="secondary" size="sm" onClick={() => onRadChange(2000)}>
               Widen to 2 km

@@ -88,7 +88,7 @@ export default function AppShell({ buildMeta }: { buildMeta: PlacesMeta }) {
       [...filtered]
         .filter((p) => p.score_10 !== null)
         .sort((a, b) => b.score_10! - a.score_10!)
-        .slice(0, 5),
+        .slice(0, 20),
     [filtered]
   );
 
@@ -237,7 +237,12 @@ export default function AppShell({ buildMeta }: { buildMeta: PlacesMeta }) {
               onSnapChange={setSheetHeight}
               header={selectedPlace ? <p className={styles.sheetName}>{selectedPlace.name}</p> : null}
             >
-              <PlaceDetailPanel place={selectedPlace} topPlaces={topPlaces} onSelectPlace={handleSelect} />
+              <PlaceDetailPanel
+                place={selectedPlace}
+                topPlaces={topPlaces}
+                onSelectPlace={handleSelect}
+                showName={false}
+              />
             </BottomSheet>
           )}
         </>

@@ -8,14 +8,16 @@ export default function ErrorState({ message, onRetry }: { message: string; onRe
   return (
     <div className={styles.wrap}>
       <div className={styles.icon} aria-hidden="true">
-        ⚠️
+        🥐💥
       </div>
-      <p className={styles.title}>Couldn&apos;t load the bakery data</p>
+      <p className={styles.title}>The croissant hit the fan</p>
       <p className={styles.body}>
-        {offline ? "You appear to be offline. Check your connection and try again." : "Something went wrong talking to the server."}
+        {offline
+          ? "Looks like you're offline. Reconnect and we'll pick up right where we left off."
+          : "The server tripped over something. Not the pastries' fault, we promise."}
       </p>
       <Button variant="primary" onClick={onRetry}>
-        Try again
+        Give it another shot
       </Button>
       <p className={styles.detail}>{message}</p>
     </div>

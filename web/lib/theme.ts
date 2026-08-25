@@ -79,6 +79,17 @@ export const CONFIDENCE_LABELS: Record<Confidence, [string, string]> = {
   insufficient_data: ["Not enough reviews", "#9AA5B1"],
 };
 
+/** Playful variants of the labels above, for the on-screen confidence pill
+ * only -- CSV export (lib/csv.ts) must keep using the plain CONFIDENCE_LABELS
+ * so it stays byte-identical to the Streamlit app's export. Colors are
+ * shared with CONFIDENCE_LABELS, only the wording differs. */
+const CONFIDENCE_DISPLAY_TEXT: Record<Confidence, string> = {
+  high: "Trust us",
+  medium: "Probably fine",
+  low: "Pinch of salt advised",
+  insufficient_data: "Total mystery",
+};
+
 /** AA-passing (>=4.5:1 on white) text variants of the confidence colors
  * above -- the raw CONFIDENCE_LABELS colors are dot/graphical colors only
  * and must never be used as text (medium/low/insufficient_data are all
@@ -95,6 +106,14 @@ export function confidenceBadge(confidence: string | null | undefined): [string,
     return CONFIDENCE_LABELS[confidence as Confidence];
   }
   return ["Unknown", "#9AA5B1"];
+}
+
+/** Same color, playful label -- for the on-screen pill only (see
+ * CONFIDENCE_DISPLAY_TEXT above). */
+export function confidenceDisplayBadge(confidence: string | null | undefined): [string, string] {
+  const [, color] = confidenceBadge(confidence);
+  const text = confidence && confidence in CONFIDENCE_DISPLAY_TEXT ? CONFIDENCE_DISPLAY_TEXT[confidence as Confidence] : "Unknown";
+  return [text, color];
 }
 
 export function confidenceTextColor(confidence: string | null | undefined): string {
@@ -116,3 +135,14 @@ export function formatPercent(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
   return `${Math.round(value * 100)}%`;
 }
+
+/** Mirrors src/pac/webapp/theme.py's ASPECT_LABELS -- keep the keys/values
+ * in sync by hand (same convention as the rest of this file). */
+export const ASPECT_LABELS: Record<string, string> = {
+  freshness: "Freshness",
+  baking: "Baking",
+  chocolate_quantity: "Chocolate amount",
+  lamination: "Lamination",
+  price_value: "Value for money",
+  other: "Other",
+};

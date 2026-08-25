@@ -30,7 +30,7 @@ export default function ResultsBar({
         )}
         <p className={styles.count} role="status" aria-live="polite" aria-atomic="true">
           {shown === 0 ? (
-            <>No bakeries match</>
+            <>Nothing survived those filters</>
           ) : filtered ? (
             <>
               <strong className="tnum">{formatInt(shown)}</strong> of {formatInt(total)} bakeries

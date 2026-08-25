@@ -26,6 +26,12 @@ export function decodePlaces(file: PlacesFile): { places: Place[]; byId: Map<str
     n_relevant: idx("n_relevant"),
     positive_ratio: idx("positive_ratio"),
     arrondissement: idx("arrondissement"),
+    asp_freshness: idx("asp_freshness"),
+    asp_baking: idx("asp_baking"),
+    asp_chocolate_quantity: idx("asp_chocolate_quantity"),
+    asp_lamination: idx("asp_lamination"),
+    asp_price_value: idx("asp_price_value"),
+    asp_other: idx("asp_other"),
   };
 
   const places: Place[] = file.rows.map((row) => ({
@@ -44,6 +50,12 @@ export function decodePlaces(file: PlacesFile): { places: Place[]; byId: Map<str
     n_relevant: row[col.n_relevant] as number,
     positive_ratio: row[col.positive_ratio] as number | null,
     arrondissement: row[col.arrondissement] as number | null,
+    asp_freshness: row[col.asp_freshness] as number | null,
+    asp_baking: row[col.asp_baking] as number | null,
+    asp_chocolate_quantity: row[col.asp_chocolate_quantity] as number | null,
+    asp_lamination: row[col.asp_lamination] as number | null,
+    asp_price_value: row[col.asp_price_value] as number | null,
+    asp_other: row[col.asp_other] as number | null,
   }));
 
   const byId = new Map(places.map((p) => [p.place_id, p]));

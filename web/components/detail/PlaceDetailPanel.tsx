@@ -14,12 +14,16 @@ export default function PlaceDetailPanel({
   place,
   topPlaces = [],
   onSelectPlace,
+  showName = true,
 }: {
   place: Place | null;
   /** Highest-scored places in the current filtered view, shown when
    * nothing is selected. */
   topPlaces?: Place[];
   onSelectPlace?: (placeId: string) => void;
+  /** The mobile bottom sheet already shows the name in its own header
+   * row -- set false there so it isn't repeated. */
+  showName?: boolean;
 }) {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [status, setStatus] = useState<Status>("idle");
@@ -51,14 +55,14 @@ export default function PlaceDetailPanel({
   if (!place) {
     return (
       <aside className={styles.panel} aria-label="Bakery details">
-        <DetailEmptyState topPlaces={topPlaces.slice(0, 5)} onSelect={(id) => onSelectPlace?.(id)} />
+        <DetailEmptyState topPlaces={topPlaces.slice(0, 20)} onSelect={(id) => onSelectPlace?.(id)} />
       </aside>
     );
   }
 
   return (
     <aside className={styles.panel} aria-label="Bakery details">
-      <h2 className={styles.name}>{place.name}</h2>
+      {showName && <h2 className={styles.name}>{place.name}</h2>}
       <p className={styles.address}>{place.address}</p>
       <PlaceSummary place={place} showScore />
       <ReviewList reviews={reviews} showControls loading={status === "loading"} />

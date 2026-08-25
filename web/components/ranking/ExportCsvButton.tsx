@@ -24,7 +24,7 @@ export default function ExportCsvButton({ places }: { places: Place[] }) {
       }
       onClick={() => downloadCsv("paris_pain_au_chocolat_ranking.csv", rankingToCsv(places))}
     >
-      Export CSV ({formatInt(places.length)} rows)
+      Take the receipts ({formatInt(places.length)} rows, CSV)
     </Button>
   );
 }
