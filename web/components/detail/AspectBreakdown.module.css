@@ -22,6 +22,31 @@
   display: flex;
   align-items: center;
   gap: var(--sp-2);
+  width: 100%;
+  padding: 2px var(--sp-1);
+  border-radius: var(--r-sm);
+  background: none;
+  border: 1px solid transparent;
+  font: inherit;
+  text-align: left;
+}
+
+.rowClickable {
+  cursor: pointer;
+}
+
+.rowClickable:hover {
+  background: var(--surface-hover);
+}
+
+.rowSelected {
+  border-color: var(--accent);
+  background: var(--surface-hover);
+}
+
+.rowSelected .label {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .label {

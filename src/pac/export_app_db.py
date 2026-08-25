@@ -64,11 +64,20 @@ def export_app_db() -> dict:
         con.execute("CREATE TABLE pac_scores AS SELECT * FROM src.pac_scores")
         con.execute("CREATE TABLE pac_place_aspects AS SELECT * FROM src.pac_place_aspects")
 
+        con.execute(
+            """
+            CREATE TABLE pac_mention_aspects AS
+            SELECT pma.review_id, pma.aspect, pma.weight
+            FROM src.pac_mention_aspects pma
+            JOIN src.pac_mentions m ON m.review_id = pma.review_id AND m.relevant = true
+            """
+        )
+
         con.execute("DETACH src")
 
         counts = {
             t: con.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
-            for t in ("places", "reviews", "pac_mentions", "pac_scores", "pac_place_aspects")
+            for t in ("places", "reviews", "pac_mentions", "pac_scores", "pac_place_aspects", "pac_mention_aspects")
         }
     finally:
         con.close()

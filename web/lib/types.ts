@@ -53,6 +53,7 @@ export interface Review {
   w: string | null; // relative_time_text
   p: number | null; // published_at, unix seconds
   s: number; // sentiment -1..1
+  asp: string[]; // quality criteria identified in this review, e.g. ["freshness"]
 }
 
 export interface PlaceReviews {

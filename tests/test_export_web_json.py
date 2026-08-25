@@ -32,6 +32,9 @@ CREATE TABLE reviews (
 CREATE TABLE pac_place_aspects (
     place_id VARCHAR, aspect VARCHAR, score_10 DOUBLE, n_mentions INTEGER
 );
+CREATE TABLE pac_mention_aspects (
+    review_id VARCHAR, aspect VARCHAR, weight DOUBLE
+);
 """
 
 
@@ -88,6 +91,13 @@ def app_db(tmp_path):
         """
         INSERT INTO pac_place_aspects VALUES
         ('p1', 'chocolate_quantity', 8.4, 5)
+        """
+    )
+    con.execute(
+        """
+        INSERT INTO pac_mention_aspects VALUES
+        ('r1', 'chocolate_quantity', 0.8),
+        ('r1', 'freshness', 0.4)
         """
     )
     con.close()
@@ -168,6 +178,21 @@ def test_shard_content_drops_reason_and_review_id_sorted_by_sentiment(app_db, tm
 
     assert not (out_dir / "places" / "p2.json").exists()  # aucune mention -> pas de fragment
     assert not (out_dir / "places" / "p3.json").exists()
+
+
+def test_shard_reviews_carry_their_identified_aspects(app_db, tmp_path):
+    """Chaque avis porte la liste des critères identifiés dans SA mention
+    (table pac_mention_aspects) -- liste vide, pas null, quand aucun n'a été
+    identifié, pour que le frontend puisse faire `r.asp.includes(...)` sans
+    vérif supplémentaire."""
+    out_dir = tmp_path / "out"
+    export_web_json(out_dir=out_dir, duckdb_path=app_db)
+    shard = json.loads((out_dir / "places" / "p1.json").read_text())
+    by_text = {r["t"]: r["asp"] for r in shard["reviews"]}
+
+    assert sorted(by_text["Excellent pain au chocolat."]) == ["chocolate_quantity", "freshness"]
+    assert by_text["Décevant."] == []
+    assert by_text["Correct sans plus."] == []
 
 
 def test_prunes_stale_shards(app_db, tmp_path):

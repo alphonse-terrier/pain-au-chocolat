@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { Review } from "@/lib/types";
+import { ASPECT_LABELS } from "@/lib/theme";
 import ReviewCard from "./ReviewCard";
 import Skeleton from "../ui/Skeleton";
 import SegmentedControl from "../ui/SegmentedControl";
@@ -22,26 +23,37 @@ export default function ReviewList({
   showControls,
   compact,
   loading = false,
+  aspectFilter = null,
+  onClearAspectFilter,
 }: {
   reviews: Review[];
   showControls: boolean;
   compact?: boolean;
   loading?: boolean;
+  /** Set when a "Strengths & weaknesses" criterion is selected above --
+   * narrows the list to reviews that identified it. */
+  aspectFilter?: string | null;
+  onClearAspectFilter?: () => void;
 }) {
   const [tone, setTone] = useState<Tone>("all");
   const [sort, setSort] = useState<Sort>("relevance");
 
+  const byAspect = useMemo(
+    () => (aspectFilter ? reviews.filter((r) => r.asp.includes(aspectFilter)) : reviews),
+    [reviews, aspectFilter]
+  );
+
   const counts = useMemo(
     () => ({
-      all: reviews.length,
-      positive: reviews.filter((r) => r.s >= 0).length,
-      negative: reviews.filter((r) => r.s < 0).length,
+      all: byAspect.length,
+      positive: byAspect.filter((r) => r.s >= 0).length,
+      negative: byAspect.filter((r) => r.s < 0).length,
     }),
-    [reviews]
+    [byAspect]
   );
 
   const shown = useMemo(() => {
-    let out = reviews;
+    let out = byAspect;
     if (tone === "positive") out = out.filter((r) => r.s >= 0);
     if (tone === "negative") out = out.filter((r) => r.s < 0);
     if (sort === "recent") {
@@ -50,7 +62,7 @@ export default function ReviewList({
       out = [...out].sort((a, b) => b.s - a.s);
     }
     return out;
-  }, [reviews, tone, sort]);
+  }, [byAspect, tone, sort]);
 
   if (loading) {
     return (
@@ -77,6 +89,16 @@ export default function ReviewList({
 
   return (
     <div className={styles.wrap}>
+      {aspectFilter && (
+        <div className={styles.aspectChip}>
+          <span>
+            Showing reviews about <strong>{(ASPECT_LABELS[aspectFilter] ?? aspectFilter).toLowerCase()}</strong>
+          </span>
+          <button type="button" className={styles.aspectChipClear} onClick={onClearAspectFilter}>
+            Clear ✕
+          </button>
+        </div>
+      )}
       {showControls && (
         <div className={styles.controls}>
           <SegmentedControl
@@ -101,7 +123,17 @@ export default function ReviewList({
         </div>
       )}
       <div className={`${styles.scroll} ${compact ? styles.scrollSmall : ""}`}>
-        {shown.length === 0 ? (
+        {byAspect.length === 0 ? (
+          <EmptyState
+            title="None of those, it turns out"
+            body="No review called that out specifically here."
+            action={
+              <button type="button" className={styles.resetTone} onClick={onClearAspectFilter}>
+                Show everything
+              </button>
+            }
+          />
+        ) : shown.length === 0 ? (
           <EmptyState
             title="Crickets"
             body="Nothing in that mood right now."

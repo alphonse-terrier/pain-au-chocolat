@@ -27,6 +27,7 @@ export default function PlaceDetailPanel({
 }) {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [status, setStatus] = useState<Status>("idle");
+  const [aspectFilter, setAspectFilter] = useState<string | null>(null);
 
   useEffect(() => {
     if (!place) {
@@ -41,6 +42,7 @@ export default function PlaceDetailPanel({
     // shard is still in flight.
     setReviews([]);
     setStatus("loading");
+    setAspectFilter(null);
     fetchPlaceReviews(place.place_id).then((data) => {
       if (!cancelled) {
         setReviews(data.reviews);
@@ -64,8 +66,14 @@ export default function PlaceDetailPanel({
     <aside className={styles.panel} aria-label="Bakery details">
       {showName && <h2 className={styles.name}>{place.name}</h2>}
       <p className={styles.address}>{place.address}</p>
-      <PlaceSummary place={place} showScore />
-      <ReviewList reviews={reviews} showControls loading={status === "loading"} />
+      <PlaceSummary place={place} showScore aspectFilter={aspectFilter} onAspectFilterChange={setAspectFilter} />
+      <ReviewList
+        reviews={reviews}
+        showControls
+        loading={status === "loading"}
+        aspectFilter={aspectFilter}
+        onClearAspectFilter={() => setAspectFilter(null)}
+      />
     </aside>
   );
 }

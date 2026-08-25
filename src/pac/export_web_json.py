@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import duckdb
+import numpy as np
 import pandas as pd
 
 from pac.config import APP_DUCKDB_PATH, WEB_DATA_DIR
@@ -185,9 +186,14 @@ def export_web_json(out_dir: Path = WEB_DATA_DIR, duckdb_path: Path = APP_DUCKDB
         mentions = con.execute(
             """
             SELECT m.place_id, r.text, r.author_name, r.rating,
-                   r.relative_time_text, r.published_at, m.sentiment
+                   r.relative_time_text, r.published_at, m.sentiment, asp.aspects
             FROM pac_mentions m
             JOIN reviews r ON r.review_id = m.review_id
+            LEFT JOIN (
+                SELECT review_id, list(aspect) AS aspects
+                FROM pac_mention_aspects
+                GROUP BY review_id
+            ) asp ON asp.review_id = m.review_id
             WHERE m.relevant = true
             ORDER BY m.place_id, m.sentiment DESC
             """
@@ -215,6 +221,10 @@ def export_web_json(out_dir: Path = WEB_DATA_DIR, duckdb_path: Path = APP_DUCKDB
                 "w": row.relative_time_text if pd.notna(row.relative_time_text) else None,
                 "p": row.published_at if pd.notna(row.published_at) else None,
                 "s": round(row.sentiment, 3),
+                # Liste des critères identifiés dans cet avis (peut être
+                # vide) -- exploitée par le frontend pour filtrer les avis
+                # quand on clique un critère dans "Strengths & weaknesses".
+                "asp": list(row.aspects) if isinstance(row.aspects, np.ndarray) else [],
             }
             for row in group.itertuples(index=False)
         ]
