@@ -1,0 +1,38 @@
+.field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.label {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.selectWrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.select {
+  appearance: none;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  padding: 0 var(--sp-6) 0 var(--sp-3);
+  height: var(--control-h-sm);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.select:hover {
+  border-color: var(--text-tertiary);
+}
+
+.chevron {
+  position: absolute;
+  right: var(--sp-2);
+  color: var(--text-secondary);
+  pointer-events: none;
+}

@@ -1,0 +1,110 @@
+.wrap {
+  max-width: 720px;
+}
+
+.card {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-xs);
+  padding: var(--sp-5);
+  margin-bottom: var(--sp-4);
+}
+
+.heading {
+  font-size: var(--text-md);
+  font-weight: var(--fw-semibold);
+  margin: 0 0 var(--sp-4);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.addressRow {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.addressField {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.pinIcon {
+  position: absolute;
+  left: var(--sp-3);
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.addressInput {
+  width: 100%;
+  height: var(--control-h-lg);
+  padding: 0 var(--sp-3) 0 var(--sp-8);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  font-size: var(--text-base);
+}
+.addressInput:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--shadow-focus);
+}
+
+.radiusRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.radiusLabel {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.caption {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin: var(--sp-2) 0;
+}
+
+.geoChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--text-xs);
+  background: var(--surface-sunken);
+  border-radius: var(--r-full);
+  padding: var(--sp-1) var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+
+.changeBtn {
+  background: none;
+  border: none;
+  color: var(--accent-text);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+  padding: 0;
+}
+.changeBtn:hover {
+  text-decoration: underline;
+}
+
+.skeletonList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+@media (max-width: 767px) {
+  .addressRow {
+    flex-direction: column;
+  }
+}

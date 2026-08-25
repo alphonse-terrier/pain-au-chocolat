@@ -1,0 +1,26 @@
+.wrap {
+  text-align: center;
+  padding: var(--sp-8) var(--sp-4);
+  color: var(--text-secondary);
+}
+
+.icon {
+  font-size: 28px;
+  margin-bottom: var(--sp-2);
+}
+
+.title {
+  font-size: var(--text-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+  margin: 0 0 var(--sp-1);
+}
+
+.body {
+  font-size: var(--text-xs);
+  margin: 0;
+}
+
+.action {
+  margin-top: var(--sp-3);
+}

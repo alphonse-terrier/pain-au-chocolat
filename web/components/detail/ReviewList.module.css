@@ -1,0 +1,56 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0 var(--sp-3);
+  flex: none;
+}
+
+.scroll {
+  flex: 1;
+  /* A real minimum, not 0: on the mobile bottom sheet's "half" snap, the
+     header content above (score hero, metrics, confidence) can be taller
+     than the space left for reviews, which would otherwise squeeze this
+     to nothing and make it look like scrolling is broken. Guarantees at
+     least a peek of reviews; .panel's ancestor (.body) can absorb any
+     resulting overflow via its own scroll. */
+  min-height: 72px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.scrollSmall {
+  max-height: 260px;
+}
+
+.skeletonCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  margin-bottom: var(--sp-2);
+}
+
+.resetTone {
+  background: none;
+  border: none;
+  color: var(--accent-text);
+  font-size: var(--text-xs);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+}
+.resetTone:hover {
+  text-decoration: underline;
+}

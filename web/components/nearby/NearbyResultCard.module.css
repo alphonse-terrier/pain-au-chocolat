@@ -1,0 +1,75 @@
+.card {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-xs);
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-3);
+}
+
+.headerRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-2);
+}
+
+.rank {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-size: var(--text-2xs);
+  font-weight: var(--fw-semibold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.headerMain {
+  flex: 1;
+  min-width: 0;
+}
+
+.name {
+  font-weight: var(--fw-semibold);
+  font-size: var(--text-base);
+  margin: 0;
+}
+
+.address {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin: 2px 0 0;
+}
+
+.distance {
+  flex: none;
+  text-align: right;
+}
+
+.distanceValue {
+  display: block;
+  font-size: var(--text-md);
+  font-weight: var(--fw-bold);
+}
+
+.walkTime {
+  display: block;
+  font-size: var(--text-2xs);
+  color: var(--text-secondary);
+}
+
+.reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur-base) var(--ease-out);
+}
+.reveal[data-open] {
+  grid-template-rows: 1fr;
+}
+.revealInner {
+  overflow: hidden;
+}
