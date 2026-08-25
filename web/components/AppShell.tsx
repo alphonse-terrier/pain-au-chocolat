@@ -7,6 +7,7 @@ import { loadPlaces } from "@/lib/placesData";
 import { applyFilters, countActiveFilters, FILTER_DEFAULTS, useAppState, type Tab } from "@/lib/filters";
 import { useIsDesktop, useMediaQuery, usePrefersReducedMotion } from "@/lib/useMediaQuery";
 import Header from "./Header";
+import Footer from "./Footer";
 import Tabs from "./Tabs";
 import ResultsBar from "./ResultsBar";
 import FilterSidebar from "./FilterSidebar";
@@ -247,6 +248,7 @@ export default function AppShell({ buildMeta }: { buildMeta: PlacesMeta }) {
           )}
         </>
       )}
+      <Footer />
     </div>
   );
 }

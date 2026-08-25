@@ -1,0 +1,36 @@
+.footer {
+  flex: none;
+  border-top: 1px solid var(--border);
+  padding: var(--sp-1) var(--sp-6);
+}
+
+.list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px var(--sp-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  font-size: var(--text-2xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+@media (max-width: 1023px) {
+  .footer {
+    padding: var(--sp-1) var(--sp-4);
+  }
+
+  .list {
+    justify-content: flex-start;
+  }
+
+  .item {
+    white-space: normal;
+  }
+}
