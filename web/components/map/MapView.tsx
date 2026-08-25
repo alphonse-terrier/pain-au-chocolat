@@ -7,7 +7,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useMaplibreMap } from "./useMaplibreMap";
 import { placesToFeatureCollection } from "./toGeoJSON";
 import { SOURCE_ID, CLUSTERS_LAYER, CLUSTER_COUNT_LAYER, UNCLUSTERED_POINT_LAYER, selectedPointLayer } from "./layers";
-import { CLUSTER_MAX_ZOOM, CLUSTER_RADIUS } from "./mapStyle";
+import { CLUSTER_MAX_ZOOM, CLUSTER_RADIUS, SELECTED_PLACE_ZOOM } from "./mapStyle";
 import type { Place } from "@/lib/types";
 import styles from "./MapView.module.css";
 
@@ -178,6 +178,12 @@ export default function MapView({ places, selectedId, onSelect, active, cameraPa
           map.resize();
           map.jumpTo({
             center: [place.map_lon, place.map_lat],
+            // Always zoom in at least to neighbourhood scale: a selection
+            // made from a list (not a map click) is often coming from a
+            // zoomed-out or clustered view, where the target place isn't
+            // visible as its own marker yet. Never zoom back OUT though --
+            // if the user is already closer, leave their zoom alone.
+            zoom: Math.max(map.getZoom(), SELECTED_PLACE_ZOOM),
             padding: { bottom: cameraPaddingBottom, top: 0, left: 0, right: 0 },
           });
         } catch {

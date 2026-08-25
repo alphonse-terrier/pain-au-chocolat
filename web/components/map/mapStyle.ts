@@ -38,3 +38,7 @@ export const PARIS_CENTER: [number, number] = [2.3522, 48.8566]; // [lon, lat]
 export const PARIS_ZOOM = 12;
 export const CLUSTER_MAX_ZOOM = 16;
 export const CLUSTER_RADIUS = 45;
+// Just above CLUSTER_MAX_ZOOM, so a place selected from a list (Ranking,
+// Top 20) always lands unclustered and clearly picked out, at a
+// neighbourhood-scale view rather than a full street zoom-in.
+export const SELECTED_PLACE_ZOOM = CLUSTER_MAX_ZOOM + 1;
