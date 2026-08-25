@@ -140,3 +140,34 @@ def format_stars(rating: float | None) -> str:
     filled = int(round(rating))
     filled = max(0, min(5, filled))
     return "★" * filled + "☆" * (5 - filled) + f" {rating:.1f}"
+
+
+ASPECT_LABELS = {
+    "freshness": "Freshness",
+    "baking": "Baking",
+    "chocolate_quantity": "Chocolate amount",
+    "lamination": "Lamination",
+    "price_value": "Value for money",
+    "other": "Other",
+}
+
+
+def aspect_bar_html(aspect: str, score_10: float, n_mentions: int) -> str:
+    """Une ligne "critère qualité -> score /10" pour le petit panneau
+    "points forts / points faibles" d'une fiche -- même palette que le
+    score global (score_to_color), même contrainte que mention_card_html/
+    confidence_pill_html : du HTML avec styles inline, un popup Folium ne
+    voit aucune classe CSS de la page hôte."""
+    label = ASPECT_LABELS.get(aspect, aspect)
+    color = score_to_color(score_10)
+    pct = max(0.0, min(100.0, score_10 / 10 * 100))
+    title = f"Based on {n_mentions} mention{'s' if n_mentions != 1 else ''}"
+    return (
+        f'<div title="{html.escape(title)}" style="display:flex;align-items:center;gap:8px;margin:3px 0;font-size:12px;">'
+        f'<span style="flex:0 0 120px;color:#555;">{html.escape(label)}</span>'
+        '<span style="flex:1;background:#eee;border-radius:3px;height:6px;overflow:hidden;">'
+        f'<span style="display:block;width:{pct:.0f}%;height:100%;background:{color};"></span>'
+        "</span>"
+        f'<span style="flex:0 0 32px;text-align:right;font-weight:600;">{score_10:.1f}</span>'
+        "</div>"
+    )

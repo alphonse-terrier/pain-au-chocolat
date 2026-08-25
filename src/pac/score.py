@@ -139,7 +139,16 @@ def _classify_one(
     try:
         result = classify_json(client, SYSTEM_PROMPT, user_prompt, model=model)
         relevant = bool(result.get("relevant"))
-        sentiment = float(result.get("sentiment", 0.0))
+        # .get(..., 0.0) ne protège que si la clé est absente -- le modèle
+        # renvoie souvent littéralement "sentiment": null quand relevant=false
+        # (le prompt ne précise pas quoi mettre dans ce cas), et .get()
+        # retourne alors None malgré le défaut, faisant planter float(None).
+        # Ce bug réel a fait échouer 81% des appels lors d'un reclassify
+        # complet (19849/24501), chaque échec étant silencieusement
+        # enregistré comme relevant=false par le fallback ci-dessous --
+        # jamais un vrai jugement du modèle.
+        sentiment_raw = result.get("sentiment")
+        sentiment = float(sentiment_raw) if sentiment_raw is not None else 0.0
         sentiment = max(-1.0, min(1.0, sentiment))
         # appreciated : jugement net (apprécié/pas apprécié), distinct de
         # l'intensité continue `sentiment` -- plus robuste pour le ratio
@@ -442,6 +451,22 @@ SENTIMENT_WINSOR_FLOOR = -0.8
 ISOLATED_INCIDENT_WEIGHT = 0.6
 ONGOING_PATTERN_WEIGHT = 1.3
 
+# Une mention qui identifie un critère qualité précis (fraîcheur, cuisson,
+# quantité de chocolat, etc. -- pac_mention_aspects) est jugée plus fiable/
+# spécifique qu'une mention vague ("pas terrible" sans plus de détail) --
+# léger bonus de poids, volontairement modeste (contrairement à
+# signal_type, ce n'est pas un signal fort sur la fiabilité du jugement,
+# juste un indice de précision). Neutre (1.0) si la mention n'a aucun
+# aspect détecté -- c'est le cas de TOUTE mention non pertinente (aspects
+# gated sur relevant dans _classify_one) et de toute mention classifiée
+# avant l'introduction de ce champ.
+ASPECT_SPECIFICITY_BONUS = 1.15
+
+# En dessous de ce nombre de mentions, un score par aspect serait décidé
+# par un ou deux avis -- pas un échantillon assez large pour un chiffre
+# affiché en tête de fiche (cf. plan).
+MIN_ASPECT_MENTIONS = 3
+
 
 def compute_scores(con: duckdb.DuckDBPyConnection) -> int:
     """Étage 3 : agrégation pondérée en SQL (cf. plan pour la justification
@@ -468,10 +493,16 @@ def compute_scores(con: duckdb.DuckDBPyConnection) -> int:
                           ELSE 1.0
                       END
                     * coalesce(m.llm_confidence, 1.0)
+                    * CASE WHEN coalesce(asp.max_aspect_weight, 0) > 0 THEN {ASPECT_SPECIFICITY_BONUS} ELSE 1.0 END
                     AS weight
             FROM pac_mentions m
             JOIN reviews r ON r.review_id = m.review_id
             JOIN pac_mentions_raw mr ON mr.review_id = m.review_id
+            LEFT JOIN (
+                SELECT review_id, max(weight) AS max_aspect_weight
+                FROM pac_mention_aspects
+                GROUP BY review_id
+            ) asp ON asp.review_id = m.review_id
             WHERE m.relevant = true
         )
     """
@@ -549,7 +580,63 @@ def compute_scores(con: duckdb.DuckDBPyConnection) -> int:
         ) w ON w.place_id = p.place_id
         """
     )
-    return con.execute("SELECT count(*) FROM pac_scores WHERE score_10 IS NOT NULL").fetchone()[0]
+    n_scored = con.execute("SELECT count(*) FROM pac_scores WHERE score_10 IS NOT NULL").fetchone()[0]
+    _compute_aspect_scores(con, generic_terms_sql)
+    return n_scored
+
+
+def _compute_aspect_scores(con: duckdb.DuckDBPyConnection, generic_terms_sql: str) -> None:
+    """Étage 3bis : un score /10 par (lieu, critère qualité), en plus du
+    score global -- jamais à sa place. Réutilise le même poids par mention
+    que _weighted ci-dessus (crédibilité x fraîcheur x terme générique x
+    signal_type x llm_confidence x bonus de spécificité), multiplié par le
+    poids de CET aspect dans la mention (une mention peut compter beaucoup
+    pour "chocolate_quantity" et peu pour "lamination" si elle cite les
+    deux avec des poids différents). Volontairement plus simple que le
+    score global : pas de lissage vers un prior (MIN_ASPECT_MENTIONS protège
+    déjà des petits échantillons), pas de blend avec positive_ratio -- une
+    moyenne pondérée du sentiment, mappée sur 0..10 (cf. plan)."""
+    con.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE _weighted_aspects AS
+        SELECT
+            m.place_id,
+            pma.aspect,
+            greatest({SENTIMENT_WINSOR_FLOOR}, m.sentiment) AS sentiment,
+            (
+                least(ln(1 + coalesce(r.author_review_count, 0)), {REVIEWER_WEIGHT_CAP})
+                    * pow(0.5, (epoch(current_timestamp) - r.published_at) / 86400.0 / {RECENCY_HALFLIFE_DAYS})
+                    * CASE WHEN mr.matched_term IN ({generic_terms_sql}) THEN {GENERIC_TERM_WEIGHT} ELSE 1.0 END
+                    * CASE m.signal_type
+                          WHEN 'isolated_incident' THEN {ISOLATED_INCIDENT_WEIGHT}
+                          WHEN 'ongoing_pattern' THEN {ONGOING_PATTERN_WEIGHT}
+                          ELSE 1.0
+                      END
+                    * coalesce(m.llm_confidence, 1.0)
+                    * {ASPECT_SPECIFICITY_BONUS}
+                    * pma.weight
+            ) AS weight
+        FROM pac_mentions m
+        JOIN reviews r ON r.review_id = m.review_id
+        JOIN pac_mentions_raw mr ON mr.review_id = m.review_id
+        JOIN pac_mention_aspects pma ON pma.review_id = m.review_id
+        WHERE m.relevant = true
+        """
+    )
+    con.execute("DELETE FROM pac_place_aspects")
+    con.execute(
+        f"""
+        INSERT INTO pac_place_aspects (place_id, aspect, score_10, n_mentions)
+        SELECT
+            place_id,
+            aspect,
+            greatest(0.0, least(10.0, (sum(sentiment * weight) / nullif(sum(weight), 0) + 1) * 5)) AS score_10,
+            count(*) AS n_mentions
+        FROM _weighted_aspects
+        GROUP BY place_id, aspect
+        HAVING count(*) >= {MIN_ASPECT_MENTIONS}
+        """
+    )
 
 
 def leaderboard(con: duckdb.DuckDBPyConnection, top_n: int = 15) -> tuple[list, list]:

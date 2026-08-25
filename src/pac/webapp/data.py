@@ -132,3 +132,25 @@ def load_mentions_for_place(place_id: str) -> pd.DataFrame:
         ).fetchdf()
     finally:
         con.close()
+
+
+@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
+def load_place_aspects(place_id: str) -> pd.DataFrame:
+    """Score /10 secondaire par critère qualité (fraîcheur, cuisson,
+    quantité de chocolat, feuilletage, rapport qualité/prix) pour UN lieu
+    -- en complément du score global, jamais à sa place (cf. plan). Une
+    ligne seulement si le critère est couvert par assez de mentions
+    (score.MIN_ASPECT_MENTIONS), donc potentiellement aucune ligne."""
+    con = _connect()
+    try:
+        return con.execute(
+            """
+            SELECT aspect, score_10, n_mentions
+            FROM pac_place_aspects
+            WHERE place_id = ?
+            ORDER BY score_10 DESC
+            """,
+            [place_id],
+        ).fetchdf()
+    finally:
+        con.close()

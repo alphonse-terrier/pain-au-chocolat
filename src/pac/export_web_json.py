@@ -95,6 +95,28 @@ def export_web_json(out_dir: Path = WEB_DATA_DIR, duckdb_path: Path = APP_DUCKDB
         places["arrondissement"] = places["formatted_address"].apply(extract_arrondissement)
         places = _spread_duplicate_coordinates(places)
 
+        # --- score /10 secondaire par critère qualité, en plus du score
+        # global -- une colonne par aspect, pivotée en SQL plutôt qu'en
+        # pandas pour rester dans le même style que le reste du fichier.
+        # NULL si le critère n'est pas couvert par assez de mentions pour
+        # ce lieu (score.MIN_ASPECT_MENTIONS) -- même logique "pas de
+        # valeur inventée" que score_10 lui-même. ---
+        aspect_cols = con.execute(
+            """
+            SELECT
+                place_id,
+                max(CASE WHEN aspect = 'freshness' THEN score_10 END) AS asp_freshness,
+                max(CASE WHEN aspect = 'baking' THEN score_10 END) AS asp_baking,
+                max(CASE WHEN aspect = 'chocolate_quantity' THEN score_10 END) AS asp_chocolate_quantity,
+                max(CASE WHEN aspect = 'lamination' THEN score_10 END) AS asp_lamination,
+                max(CASE WHEN aspect = 'price_value' THEN score_10 END) AS asp_price_value,
+                max(CASE WHEN aspect = 'other' THEN score_10 END) AS asp_other
+            FROM pac_place_aspects
+            GROUP BY place_id
+            """
+        ).fetchdf()
+        places = places.merge(aspect_cols, on="place_id", how="left")
+
         # --- KPIs (même requête que load_kpis, + le total non filtré) ---
         n_places, n_reviews, n_scored, avg_score, last_review_at = con.execute(
             """
@@ -119,10 +141,15 @@ def export_web_json(out_dir: Path = WEB_DATA_DIR, duckdb_path: Path = APP_DUCKDB
             ),
         }
 
+        aspect_columns = [
+            "asp_freshness", "asp_baking", "asp_chocolate_quantity",
+            "asp_lamination", "asp_price_value", "asp_other",
+        ]
         columns = [
             "place_id", "name", "address", "lat", "lon", "map_lat", "map_lon",
             "google_rating", "user_rating_count", "maps_uri",
             "score_10", "confidence", "n_relevant", "positive_ratio", "arrondissement",
+            *aspect_columns,
         ]
         rows = []
         for r in places.itertuples(index=False):
@@ -139,6 +166,7 @@ def export_web_json(out_dir: Path = WEB_DATA_DIR, duckdb_path: Path = APP_DUCKDB
                 int(r.n_relevant) if pd.notna(r.n_relevant) else 0,
                 round(r.positive_ratio, 3) if pd.notna(r.positive_ratio) else None,
                 int(r.arrondissement) if pd.notna(r.arrondissement) else None,
+                *(round(getattr(r, c), 2) if pd.notna(getattr(r, c)) else None for c in aspect_columns),
             ])
 
         _write_json(

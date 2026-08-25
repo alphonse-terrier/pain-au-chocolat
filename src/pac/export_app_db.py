@@ -62,12 +62,13 @@ def export_app_db() -> dict:
         )
 
         con.execute("CREATE TABLE pac_scores AS SELECT * FROM src.pac_scores")
+        con.execute("CREATE TABLE pac_place_aspects AS SELECT * FROM src.pac_place_aspects")
 
         con.execute("DETACH src")
 
         counts = {
             t: con.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
-            for t in ("places", "reviews", "pac_mentions", "pac_scores")
+            for t in ("places", "reviews", "pac_mentions", "pac_scores", "pac_place_aspects")
         }
     finally:
         con.close()

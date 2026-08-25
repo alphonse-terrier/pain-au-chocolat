@@ -87,6 +87,19 @@ CREATE TABLE IF NOT EXISTS pac_scores (
     positive_ratio DOUBLE,  -- part pondérée des mentions positives (sentiment >= 0)
     updated_at TIMESTAMP DEFAULT current_timestamp
 );
+
+-- Score /10 secondaire, par (lieu, critère qualité) -- en plus du score
+-- global de pac_scores, jamais à sa place (cf. plan). Une ligne seulement
+-- si au moins MIN_ASPECT_MENTIONS mentions couvrent ce critère pour ce
+-- lieu (score.py::_compute_aspect_scores) -- pas de valeur calculée sur un
+-- échantillon trop petit pour être un signal fiable.
+CREATE TABLE IF NOT EXISTS pac_place_aspects (
+    place_id VARCHAR,
+    aspect VARCHAR,
+    score_10 DOUBLE,
+    n_mentions INTEGER,
+    PRIMARY KEY (place_id, aspect)
+);
 """
 
 

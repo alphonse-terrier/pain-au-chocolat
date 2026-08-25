@@ -29,6 +29,9 @@ CREATE TABLE reviews (
     review_id VARCHAR, place_id VARCHAR, author_name VARCHAR, text VARCHAR,
     rating INTEGER, relative_time_text VARCHAR, published_at DOUBLE, scraped_at TIMESTAMP
 );
+CREATE TABLE pac_place_aspects (
+    place_id VARCHAR, aspect VARCHAR, score_10 DOUBLE, n_mentions INTEGER
+);
 """
 
 
@@ -79,6 +82,12 @@ def app_db(tmp_path):
         ('r1', 'p1', 'Alice', 'Excellent pain au chocolat.', 5, 'il y a 1 mois', 1700000000.0, now()),
         ('r2', 'p1', 'Bob', 'Décevant.', 2, 'il y a 2 mois', 1690000000.0, now()),
         ('r3', 'p1', NULL, 'Correct sans plus.', 3, 'il y a 3 mois', 1680000000.0, now())
+        """
+    )
+    con.execute(
+        """
+        INSERT INTO pac_place_aspects VALUES
+        ('p1', 'chocolate_quantity', 8.4, 5)
         """
     )
     con.close()
@@ -172,6 +181,25 @@ def test_prunes_stale_shards(app_db, tmp_path):
     assert counts["pruned"] == 1
     assert not stale.exists()
     assert (out_dir / "places" / "p1.json").exists()
+
+
+def test_aspect_score_columns_present_and_null_when_uncovered(app_db, tmp_path):
+    """places.json expose un score /10 secondaire par critère qualité --
+    non NULL uniquement pour (lieu, critère) présent dans
+    pac_place_aspects, NULL partout ailleurs (pas de valeur inventée,
+    même logique que score_10 lui-même)."""
+    out_dir = tmp_path / "out"
+    export_web_json(out_dir=out_dir, duckdb_path=app_db)
+    places = json.loads((out_dir / "places.json").read_text())
+    cols = places["columns"]
+    id_i, choc_i, lam_i = (
+        cols.index(c) for c in ("place_id", "asp_chocolate_quantity", "asp_lamination")
+    )
+    by_id = {row[id_i]: row for row in places["rows"]}
+
+    assert by_id["p1"][choc_i] == 8.4
+    assert by_id["p1"][lam_i] is None  # pas de ligne pac_place_aspects pour cet aspect
+    assert by_id["p2"][choc_i] is None  # aucune ligne pac_place_aspects pour ce lieu
 
 
 def test_export_is_deterministic_across_runs(app_db, tmp_path):

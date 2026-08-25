@@ -19,6 +19,7 @@ from streamlit_folium import st_folium
 from pac.webapp.data import (
     DatabaseUnavailable,
     load_mentions_for_place,
+    load_place_aspects,
     load_kpis,
     load_places_with_scores,
 )
@@ -26,6 +27,7 @@ from pac.webapp.geocode import GeocodeError, geocode_address, haversine_m
 from pac.webapp.map_view import build_map, build_marker_specs, spread_duplicate_coordinates
 from pac.webapp.theme import (
     MAPS_LINK_LABEL,
+    aspect_bar_html,
     confidence_badge,
     confidence_pill_html,
     format_percent,
@@ -91,6 +93,14 @@ def _render_place_summary(row: pd.Series, *, show_score: bool) -> None:
     st.markdown(
         confidence_pill_html(row.get("confidence"), row.get("n_relevant")), unsafe_allow_html=True
     )
+    aspects = load_place_aspects(row["place_id"])
+    if not aspects.empty:
+        st.markdown(
+            "".join(
+                aspect_bar_html(r.aspect, r.score_10, r.n_mentions) for r in aspects.itertuples()
+            ),
+            unsafe_allow_html=True,
+        )
     if row.get("google_maps_uri"):
         st.markdown(f"[{MAPS_LINK_LABEL}]({row['google_maps_uri']})")
 
@@ -387,18 +397,35 @@ with tab_about:
            pastry, or only about its **price** (in which case it is excluded:
            a 1★ review complaining about the price of a chocolatine that is
            otherwise described as excellent should not drag the score down).
-        3. **Weighting** — each retained mention is weighted by the
-           contributor's credibility (number of reviews posted, capped) and
-           its freshness: a review loses half its weight every year (so a
-           review from 2 years ago counts for a quarter of one posted today).
-        4. **Aggregation** — a place's score out of 10 is the weighted
-           average of its mentions, slightly smoothed toward the Paris
-           average when a place has only one or two mentions — **never**
-           toward the place's overall Google rating: a beloved bakery can
-           perfectly well have a bad pain au chocolat, and vice versa.
+           It also nets out a plain yes/no *"was this appreciated?"* call,
+           used alongside the continuous sentiment score.
+        3. **Weighting** — each retained mention is weighted by several
+           factors combined: the contributor's credibility (number of
+           reviews posted, capped), its freshness (a review loses half its
+           weight every year, so one from 2 years ago counts for a quarter
+           of one posted today), whether it names the pastry specifically
+           or only the generic *"viennoiserie"* (down-weighted), whether it
+           describes a one-off incident or a lasting pattern (a single bad
+           batch counts for less than "since the new owner, it's not the
+           same"), the model's own confidence in its reading of the
+           passage, and whether it names a precise quality criterion (a
+           vague "not great" counts for a little less than a specific "not
+           enough chocolate").
+        4. **Aggregation** — a place's score out of 10 blends the weighted
+           average sentiment with the share of appreciated mentions,
+           slightly smoothed toward the Paris average when a place has only
+           one or two mentions — **never** toward the place's overall
+           Google rating: a beloved bakery can perfectly well have a bad
+           pain au chocolat, and vice versa.
 
         A place with no pain au chocolat mention in its reviews has **no**
         score by default — it shows up grey on the map rather than being
         assigned a made-up value.
+
+        The model also tags each mention with the specific criteria it
+        raises (freshness, baking, chocolate quantity, lamination, price
+        relative to quality). When at least 3 mentions cover the same
+        criterion for a place, it gets its own mini score, shown as a
+        small breakdown next to the main one.
         """
     )
