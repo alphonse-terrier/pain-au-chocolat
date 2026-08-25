@@ -6,9 +6,10 @@ import json
 import typer
 from playwright.sync_api import sync_playwright
 
-from pac.config import RAW_PLACES_DIR, settings
+from pac.config import RAW_PLACES_DIR, WEB_DATA_DIR, settings
 from pac.discover import discover_bakeries
 from pac.export_app_db import export_app_db
+from pac.export_web_json import export_web_json
 from pac.reviews import crawl_place_reviews
 from pac.score import classify_mentions, compute_scores, extract_mentions, leaderboard, verify_anomalies
 from pac.store import get_connection, load_places, load_reviews
@@ -195,6 +196,15 @@ def export_app_db_command():
     `pac score` pour que l'app affiche les données à jour."""
     counts = export_app_db()
     typer.echo(f"pac_app.duckdb régénérée : {counts}")
+
+
+@app.command(name="export-web-json")
+def export_web_json_command():
+    """Régénère les fichiers JSON statiques du frontend Next.js/MapLibre
+    (web/public/data/) à partir de pac_app.duckdb -- à relancer après
+    `pac export-app-db` pour que ce frontend affiche les données à jour."""
+    counts = export_web_json()
+    typer.echo(f"{WEB_DATA_DIR} régénéré : {counts}")
 
 
 if __name__ == "__main__":

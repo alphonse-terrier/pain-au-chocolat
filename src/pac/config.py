@@ -15,6 +15,12 @@ DUCKDB_PATH = DATA_DIR / "pac.duckdb"
 # qu'elle ne lit jamais (cf. discussion : seuls les avis liés à une mention
 # pain-au-chocolat/viennoiserie sont affichés).
 APP_DUCKDB_PATH = DATA_DIR / "pac_app.duckdb"
+# Données statiques consommées par le frontend Next.js/MapLibre (cf. plan
+# "New Next.js + MapLibre frontend") -- régénérées par `pac export-web-json`
+# à partir d'APP_DUCKDB_PATH, jamais lues par le pipeline ni par l'app
+# Streamlit. Committées dans git comme APP_DUCKDB_PATH (même logique : c'est
+# un export dérivé, pas une source de vérité).
+WEB_DATA_DIR = ROOT_DIR / "web" / "public" / "data"
 
 # Bbox large de Paris intra-muros (utilisée par grid.py pour le pavage).
 PARIS_BBOX = {
