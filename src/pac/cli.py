@@ -7,6 +7,7 @@ import typer
 from playwright.sync_api import sync_playwright
 
 from pac.config import RAW_PLACES_DIR, WEB_DATA_DIR, settings
+from pac.dedupe import merge_duplicates
 from pac.discover import discover_bakeries
 from pac.export_app_db import export_app_db
 from pac.export_web_json import export_web_json
@@ -95,6 +96,31 @@ def load():
     n_places = load_places(con)
     n_reviews = load_reviews(con)
     typer.echo(f"places={n_places} reviews={n_reviews} -> {con}")
+
+
+@app.command()
+def dedupe(
+    dry_run: bool = typer.Option(
+        False, help="Affiche juste les fusions qui seraient faites, sans rien modifier"
+    ),
+):
+    """Fusionne les fiches Google Places en double (même adresse précise) --
+    ex. l'ancienne fiche au nom du gérant précédent qui traîne à côté de la
+    fiche actuelle après un changement d'enseigne. Les avis de la/des
+    fiche(s) perdante(s) sont réaffectés à celle qui a le plus d'avis, qui
+    est ensuite la seule à survivre. Lancer `pac score` juste après pour
+    recalculer les scores impactés."""
+    con = get_connection()
+    result = merge_duplicates(con, dry_run=dry_run)
+
+    verb = "seraient fusionnées" if dry_run else "fusionnées"
+    typer.echo(f"{result['groups_merged']} groupe(s) de doublons {verb}.")
+    typer.echo(f"{result['places_removed']} fiche(s) en double, {result['reviews_reassigned']} avis réaffecté(s).")
+    for merge in result["merges"]:
+        typer.echo(f"  {merge['survivor']} <- {', '.join(merge['losers'])}")
+
+    if not dry_run and result["groups_merged"] > 0:
+        typer.echo("\nN'oublie pas de lancer `pac score` pour recalculer les scores impactés.")
 
 
 @app.command()
