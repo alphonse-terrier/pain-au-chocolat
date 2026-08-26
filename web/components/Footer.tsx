@@ -1,10 +1,10 @@
 import styles from "./Footer.module.css";
 
 const ITEMS = [
+  "🇫🇷 Made with love (and a lot of pain au chocolat) in Paris, France",
+  "💸 100% free, no ads, no upsell",
   "🙈 Yes, we scraped Google for this. We know, we know",
   "🎭 Reviewer names are pseudonymised, not the real Google ones",
-  "💸 100% free, no ads, no upsell",
-  "🇫🇷 Made with love (and a lot of pain au chocolat) in France",
   "🥦 Eat five fruits and vegetables a day",
   "⚠️ Eat pain au chocolat at your own risk",
 ];
