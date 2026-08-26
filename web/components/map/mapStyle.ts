@@ -1,38 +1,17 @@
-import type { StyleSpecification } from "maplibre-gl";
-
-/** CARTO Positron raster tiles -- reproduces the current Folium
- * "CartoDB positron" look with no API key/account required (unlike vector
- * basemaps from MapTiler/Stadia). Raster is plenty for a light basemap
- * under colored circle markers; the performance win in this port comes
- * from WebGL marker/cluster rendering, not from vector tiles. */
-export const MAP_STYLE: StyleSpecification = {
-  version: 8,
-  // Required for CLUSTER_COUNT_LAYER's text-field to render at all --
-  // MapLibre silently draws nothing without a glyphs source. Free,
-  // keyless, no-account demo tile font endpoint.
-  glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
-  sources: {
-    "carto-positron": {
-      type: "raster",
-      tiles: [
-        "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-        "https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-        "https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-        "https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-      ],
-      tileSize: 256,
-      maxzoom: 19,
-      attribution: "© OpenStreetMap contributors © CARTO",
-    },
-  },
-  layers: [
-    {
-      id: "carto-positron-layer",
-      type: "raster",
-      source: "carto-positron",
-    },
-  ],
-};
+/** OpenFreeMap's "positron" style -- a keyless, no-account vector
+ * replacement for the CARTO Positron raster tiles this used to point at.
+ * CARTO deprecated anonymous access to basemaps.cartocdn.com (every tile
+ * now renders with an "API KEY REQUIRED" watermark baked in, confirmed by
+ * fetching one directly -- not a bug on our end, a policy change on
+ * theirs). OpenFreeMap serves the same visual style, self-funded to stay
+ * free with no key/account, and its style JSON brings its own glyphs
+ * (including "Noto Sans Regular", used by CLUSTER_COUNT_LAYER below) and
+ * its own source attribution, which MapLibre's attribution control picks
+ * up automatically -- no manual override needed. Passed as a URL rather
+ * than an inline object: MapLibre fetches and owns the full style
+ * (background/water/roads/labels), our own layers are added on top once
+ * it's loaded. */
+export const MAP_STYLE = "https://tiles.openfreemap.org/styles/positron";
 
 export const PARIS_CENTER: [number, number] = [2.3522, 48.8566]; // [lon, lat]
 export const PARIS_ZOOM = 12;
