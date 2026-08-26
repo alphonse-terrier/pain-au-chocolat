@@ -62,12 +62,47 @@ export default function MapView({ places, selectedId, onSelect, active, cameraPa
 
     const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
 
-    const onClusterClick = (e: maplibregl.MapMouseEvent) => {
-      const feature = map.queryRenderedFeatures(e.point, { layers: ["clusters"] })[0];
-      if (!feature) return;
-      const clusterId = feature.properties?.cluster_id as number;
+    // MapLibre's own layer-scoped `map.on("click", layerId, ...)` hit-tests
+    // at the exact event pixel, which is fine with a mouse but a real
+    // problem with a fingertip on a 7px-radius dot -- reproducibly hard to
+    // tap on a phone. Querying a padded box around the tap point instead
+    // (and picking the closest match when several features fall in it)
+    // gives touch a generous target without changing how the dots look.
+    const TAP_HIT_PADDING = 14;
+    const hitBox = (point: maplibregl.Point): [[number, number], [number, number]] => [
+      [point.x - TAP_HIT_PADDING, point.y - TAP_HIT_PADDING],
+      [point.x + TAP_HIT_PADDING, point.y + TAP_HIT_PADDING],
+    ];
+    const queryNearest = (point: maplibregl.Point, layer: string) => {
+      const features = map.queryRenderedFeatures(hitBox(point), { layers: [layer] });
+      if (features.length <= 1) return features[0];
+      let best = features[0];
+      let bestDistSq = Infinity;
+      for (const f of features) {
+        const projected = map.project((f.geometry as Point).coordinates as [number, number]);
+        const distSq = (projected.x - point.x) ** 2 + (projected.y - point.y) ** 2;
+        if (distSq < bestDistSq) {
+          bestDistSq = distSq;
+          best = f;
+        }
+      }
+      return best;
+    };
+
+    const onMapClick = (e: maplibregl.MapMouseEvent) => {
+      const point = queryNearest(e.point, "unclustered-point");
+      const placeId = point?.properties?.place_id as string | undefined;
+      if (placeId) {
+        lastEmittedRef.current = placeId;
+        onSelectRef.current(placeId);
+        return;
+      }
+
+      const cluster = queryNearest(e.point, "clusters");
+      if (!cluster) return;
+      const clusterId = cluster.properties?.cluster_id as number;
       const source = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource;
-      const center = (feature.geometry as Point).coordinates as [number, number];
+      const center = (cluster.geometry as Point).coordinates as [number, number];
       source
         .getClusterExpansionZoom(clusterId)
         .then((zoom) => {
@@ -85,15 +120,6 @@ export default function MapView({ places, selectedId, onSelect, active, cameraPa
           }
         })
         .catch(() => {});
-    };
-
-    const onPointClick = (e: maplibregl.MapMouseEvent) => {
-      const feature = map.queryRenderedFeatures(e.point, { layers: ["unclustered-point"] })[0];
-      const placeId = feature?.properties?.place_id as string | undefined;
-      if (placeId) {
-        lastEmittedRef.current = placeId;
-        onSelectRef.current(placeId);
-      }
     };
 
     const onEnter = () => {
@@ -118,8 +144,7 @@ export default function MapView({ places, selectedId, onSelect, active, cameraPa
         .addTo(map);
     };
 
-    map.on("click", "clusters", onClusterClick);
-    map.on("click", "unclustered-point", onPointClick);
+    map.on("click", onMapClick);
     map.on("mouseenter", "clusters", onEnter);
     map.on("mouseenter", "unclustered-point", onEnter);
     map.on("mouseleave", "clusters", onLeave);
@@ -131,8 +156,7 @@ export default function MapView({ places, selectedId, onSelect, active, cameraPa
     // every one of these listeners a second time, firing onPointClick etc.
     // twice per real click.
     return () => {
-      map.off("click", "clusters", onClusterClick);
-      map.off("click", "unclustered-point", onPointClick);
+      map.off("click", onMapClick);
       map.off("mouseenter", "clusters", onEnter);
       map.off("mouseenter", "unclustered-point", onEnter);
       map.off("mouseleave", "clusters", onLeave);

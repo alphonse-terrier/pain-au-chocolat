@@ -1,5 +1,4 @@
 .sheet {
-  --drag-y: 0px;
   position: fixed;
   left: 0;
   right: 0;
@@ -11,8 +10,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  transform: translate3d(0, var(--drag-y), 0);
-  transition: height var(--dur-sheet) var(--ease-spring), transform var(--dur-fast) var(--ease-out);
+  transition: height var(--dur-sheet) var(--ease-spring);
   padding-bottom: env(safe-area-inset-bottom);
 }
 
@@ -22,14 +20,18 @@
 
 .handleArea {
   flex: none;
-  padding: var(--sp-2) var(--sp-4) var(--sp-2);
+  /* Generous touch target -- a fingertip on a 4px grabber bar is a
+     precision task; the whole strip (well past the visible bar) grabs
+     and drag-or-tap-to-cycle both work anywhere in it. */
+  padding: var(--sp-3) var(--sp-4);
+  min-height: 44px;
   touch-action: none;
   cursor: grab;
 }
 
 .grabber {
-  width: 36px;
-  height: 4px;
+  width: 44px;
+  height: 5px;
   border-radius: var(--r-full);
   background: var(--border-strong);
   margin: 0 auto var(--sp-2);
