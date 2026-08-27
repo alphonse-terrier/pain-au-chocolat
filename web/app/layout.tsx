@@ -3,10 +3,38 @@ import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { inter } from "./fonts";
 import "./globals.css";
 
+const TITLE = "The best pain au chocolat in Paris";
+const DESCRIPTION =
+  "The internet's most scientific ranking of Paris bakeries, based purely on who nails the pain au chocolat, not on how nice the croissants look on Instagram.";
+const SITE_URL = "https://painauchoc.com";
+
 export const metadata: Metadata = {
-  title: "The best pain au chocolat in Paris",
-  description:
-    "The internet's most scientific ranking of Paris bakeries, based purely on who nails the pain au chocolat, not on how nice the croissants look on Instagram.",
+  // Resolves every relative URL below (og:image, canonical, ...) into an
+  // absolute one -- required for social platforms, which won't fetch a
+  // relative og:image.
+  metadataBase: new URL(SITE_URL),
+  title: TITLE,
+  description: DESCRIPTION,
+  keywords: ["pain au chocolat", "chocolatine", "boulangerie Paris", "meilleure boulangerie Paris", "croissant"],
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: TITLE,
+    description: DESCRIPTION,
+    url: "/",
+    siteName: TITLE,
+    locale: "en_US",
+    type: "website",
+    // og:image itself comes from app/opengraph-image.tsx (file convention
+    // -- Next generates and injects it automatically, no need to list it
+    // here too).
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: TITLE,
+    description: DESCRIPTION,
+  },
 };
 
 // viewportFit: "cover" is required for env(safe-area-inset-*) to resolve
