@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import type { Place } from "@/lib/types";
-import { GeocodeError, geocodeAddress, type GeocodeResult } from "@/lib/geocode";
+import { GeocodeError, geocodeAddress, reverseGeocode, type GeocodeResult } from "@/lib/geocode";
+import { GeolocationError, getCurrentPosition } from "@/lib/geolocation";
 import { haversineM } from "@/lib/geo";
 import Button from "../ui/Button";
 import Alert from "../ui/Alert";
@@ -32,6 +33,9 @@ export default function NearbyTab({
   onRadChange: (v: number) => void;
 }) {
   const [pending, setPending] = useState(false);
+  // Separate from `pending`: address search and "use my location" are two
+  // different buttons, each should only show its own spinner.
+  const [locating, setLocating] = useState(false);
   const [geo, setGeo] = useState<GeocodeResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
@@ -51,6 +55,26 @@ export default function NearbyTab({
       setError(exc instanceof GeocodeError ? exc.message : "Something went wrong.");
     } finally {
       setPending(false);
+    }
+  }
+
+  async function handleUseLocation() {
+    setLocating(true);
+    setError(null);
+    try {
+      const { lat, lon } = await getCurrentPosition();
+      // Best-effort label -- a failed reverse lookup (offline, outside
+      // France) shouldn't block using the coordinates we already have.
+      const label = await reverseGeocode(lat, lon).catch(() => "Your current location");
+      onAddrChange(label);
+      setGeo({ lat, lon, formatted_address: label });
+      setSearched(true);
+    } catch (exc) {
+      setGeo(null);
+      setSearched(true);
+      setError(exc instanceof GeolocationError ? exc.message : "Something went wrong.");
+    } finally {
+      setLocating(false);
     }
   }
 
@@ -109,6 +133,22 @@ export default function NearbyTab({
             />
           </div>
         </form>
+        <div className={styles.orDivider}>
+          <span>or</span>
+        </div>
+        <Button
+          variant="secondary"
+          className={styles.locateBtn}
+          loading={locating}
+          onClick={handleUseLocation}
+          iconLeft={
+            <span aria-hidden="true" className={styles.locateIcon}>
+              📍
+            </span>
+          }
+        >
+          Use my location
+        </Button>
         <p className={styles.caption}>Powered by the French government&apos;s address API. Works anywhere in France, no croissant required to use it.</p>
       </div>
 

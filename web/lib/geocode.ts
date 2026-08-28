@@ -3,6 +3,7 @@
  * the browser, same as the Python side. */
 
 const SEARCH_URL = "https://api-adresse.data.gouv.fr/search/";
+const REVERSE_URL = "https://api-adresse.data.gouv.fr/reverse/";
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // mirrors @st.cache_data(ttl=86400)
 
 export class GeocodeError extends Error {}
@@ -71,4 +72,28 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult> {
   const result: GeocodeResult = { lat, lon, formatted_address: best.properties.label ?? address };
   writeCache(address, result);
   return result;
+}
+
+/** Coordinates -> a human label, for the "use my location" flow -- the
+ * device gives us lat/lon, not an address, and "48.856900, 2.352200" in
+ * the geo chip would be a worse UX than "10 Rue de Rivoli, Paris" for
+ * basically no reason. Best-effort: caller falls back to a generic label
+ * if this throws (e.g. offline, or the coordinates are outside France --
+ * this API only covers France, same limitation as forward geocoding). */
+export async function reverseGeocode(lat: number, lon: number): Promise<string> {
+  let resp: Response;
+  try {
+    resp = await fetch(`${REVERSE_URL}?lon=${lon}&lat=${lat}`);
+  } catch (exc) {
+    throw new GeocodeError(`Reverse geocoding failed: ${String(exc)}`);
+  }
+  if (!resp.ok) {
+    throw new GeocodeError(`Reverse geocoding failed: HTTP ${resp.status}`);
+  }
+  const data = (await resp.json()) as { features: Array<{ properties: { label?: string } }> };
+  const label = data.features?.[0]?.properties.label;
+  if (!label) {
+    throw new GeocodeError("No address found for this location.");
+  }
+  return label;
 }
