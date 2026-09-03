@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
-import { fraunces, inter } from "./fonts";
+import { inter } from "./fonts";
 import "./globals.css";
 
 const TITLE = "The best pain au chocolat in Paris";
@@ -44,12 +44,12 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#f3e4cd",
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} ${fraunces.variable}`}>
+    <html lang="en" className={inter.variable}>
       <body>
         <a href="#main" className="skipLink">
           Skip to content

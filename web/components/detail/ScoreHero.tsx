@@ -8,7 +8,7 @@ export default function ScoreHero({ score }: { score: number | null }) {
   if (score === null) {
     return (
       <div className={styles.wrap}>
-        <div className={`${styles.numeral} display`} style={{ color: "var(--text-tertiary)" }}>
+        <div className={styles.numeral} style={{ color: "var(--text-tertiary)" }}>
           —
         </div>
         <p className={styles.noScore}>Nobody has mentioned pain au chocolat here. Suspicious, honestly.</p>
@@ -18,7 +18,7 @@ export default function ScoreHero({ score }: { score: number | null }) {
   return (
     <div className={styles.wrap}>
       <div className={styles.numeralRow}>
-        <span className={`${styles.numeral} display tnum`} style={{ color: scoreToColor(score) }}>
+        <span className={`${styles.numeral} tnum`} style={{ color: scoreToColor(score) }}>
           {score.toFixed(1)}
         </span>
         <span className={styles.outOf}>/10</span>

@@ -1,7 +1,6 @@
 "use client";
 
 import { useId } from "react";
-import { Chevron } from "./icons";
 import styles from "./SelectField.module.css";
 
 export default function SelectField<T extends string>({
@@ -31,7 +30,9 @@ export default function SelectField<T extends string>({
             </option>
           ))}
         </select>
-        <Chevron size={10} direction="down" className={styles.chevron} />
+        <svg className={styles.chevron} width="10" height="6" viewBox="0 0 10 6" aria-hidden="true">
+          <path d="M1 1l4 4 4-4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+        </svg>
       </div>
     </div>
   );

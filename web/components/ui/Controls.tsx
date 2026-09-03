@@ -2,7 +2,6 @@
 
 import { useId } from "react";
 import { scoreGradientCss } from "@/lib/theme";
-import { Check, Search } from "./icons";
 import styles from "./Controls.module.css";
 
 export function TextField({
@@ -23,7 +22,10 @@ export function TextField({
         {label}
       </label>
       <div className={styles.textInputWrap}>
-        <Search size={14} className={styles.searchIcon} />
+        <svg className={styles.searchIcon} width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.5" fill="none" />
+          <path d="M11.5 11.5L15 15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
         <input
           id={id}
           className={styles.textInput}
@@ -242,7 +244,11 @@ export function ChipMultiselect({
             className={`${styles.chip} ${selectedSet.has(opt) ? styles.chipActive : ""}`}
             onClick={() => onToggle(opt)}
           >
-            {selectedSet.has(opt) && <Check size={9} className={styles.chipCheck} />}
+            {selectedSet.has(opt) && (
+              <svg className={styles.chipCheck} width="9" height="7" viewBox="0 0 9 7" aria-hidden="true">
+                <path d="M1 3.5L3.2 6 8 1" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
             {opt}
           </button>
         ))}

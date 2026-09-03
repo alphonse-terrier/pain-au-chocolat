@@ -9,10 +9,10 @@
 }
 
 .numeral {
-  font-size: var(--text-display-lg);
+  font-size: 48px;
+  font-weight: var(--fw-bold);
   line-height: 1;
-  /* Sober figures for a number, not the playful heading wonk. */
-  font-variation-settings: "SOFT" 40, "WONK" 0, "opsz" 44;
+  letter-spacing: var(--tracking-tight);
 }
 
 .outOf {

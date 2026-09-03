@@ -1,37 +1,12 @@
 .wrap {
-  /* z-index:0, not just position:relative -- relative alone doesn't
-     establish a stacking context, so the ::before's z-index:-1 would
-     otherwise escape to a much higher ancestor and paint behind
-     everything instead of just behind this element's own content. */
-  position: relative;
-  z-index: 0;
   text-align: center;
   padding: var(--sp-8) var(--sp-4);
   color: var(--text-secondary);
 }
 
-/* Lamination texture, densest behind the mark and gone before it reaches
-   the panel edges or the action button -- the radial mask is what keeps
-   this from reading as wallpaper. */
-.wrap::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background-image: var(--motif-lamination);
-  mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, #000 0%, transparent 100%);
-  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, #000 0%, transparent 100%);
-  pointer-events: none;
-}
-
 .icon {
-  position: relative;
   font-size: 28px;
   margin-bottom: var(--sp-2);
-}
-
-.logo {
-  opacity: 0.28;
 }
 
 .title {

@@ -67,8 +67,8 @@
 }
 
 .sheetName {
-  font-size: var(--text-display-sm);
-  line-height: var(--lh-display-sm);
+  font-weight: var(--fw-semibold);
+  font-size: var(--text-md);
   margin: 0;
 }
 

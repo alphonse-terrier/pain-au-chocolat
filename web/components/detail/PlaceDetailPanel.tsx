@@ -64,7 +64,7 @@ export default function PlaceDetailPanel({
 
   return (
     <aside className={styles.panel} aria-label="Bakery details">
-      {showName && <h2 className={`${styles.name} display`}>{place.name}</h2>}
+      {showName && <h2 className={styles.name}>{place.name}</h2>}
       <p className={styles.address}>{place.address}</p>
       <PlaceSummary place={place} showScore aspectFilter={aspectFilter} onAspectFilterChange={setAspectFilter} />
       <ReviewList

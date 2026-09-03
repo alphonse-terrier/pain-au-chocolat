@@ -7,8 +7,8 @@
 }
 
 .name {
-  font-size: var(--text-display-sm);
-  line-height: var(--lh-display-sm);
+  font-size: var(--text-md);
+  font-weight: var(--fw-semibold);
   margin: 0 0 2px;
 }
 

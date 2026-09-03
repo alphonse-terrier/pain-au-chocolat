@@ -1,19 +1,5 @@
 .nav {
-  position: relative;
-}
-
-/* A lighter echo of the header's baton rule, joining header + tabs into
-   one "signed" zone -- thinner and dimmer than the header's so the header
-   still reads as the stronger signature. */
-.nav::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 2px;
-  background-image: var(--motif-baton-rule);
-  opacity: 0.3;
+  border-bottom: 1px solid var(--border);
 }
 
 .list {

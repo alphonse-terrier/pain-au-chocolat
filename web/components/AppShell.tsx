@@ -236,7 +236,7 @@ export default function AppShell({ buildMeta }: { buildMeta: PlacesMeta }) {
               onClose={() => setState({ sel: "" })}
               reducedMotion={reducedMotion}
               onSnapChange={setSheetHeight}
-              header={selectedPlace ? <p className={`${styles.sheetName} display`}>{selectedPlace.name}</p> : null}
+              header={selectedPlace ? <p className={styles.sheetName}>{selectedPlace.name}</p> : null}
             >
               <PlaceDetailPanel
                 place={selectedPlace}

@@ -21,9 +21,6 @@
 }
 
 .aspectChipClear {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
   background: none;
   border: none;
   color: var(--accent-text);

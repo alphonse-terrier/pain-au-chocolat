@@ -1,19 +1,6 @@
 .header {
-  position: relative;
-  padding: var(--sp-4) var(--sp-6) var(--sp-3);
-}
-
-/* Chocolate-batons rule instead of a plain hairline -- the one
-   always-visible brand signature in a 100dvh shell that never scrolls. */
-.header::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 3px;
-  background-image: var(--motif-baton-rule);
-  opacity: 0.55;
+  padding: var(--sp-3) var(--sp-6) var(--sp-2);
+  border-bottom: 1px solid var(--border);
 }
 
 .titleRow {
@@ -24,36 +11,10 @@
 }
 
 .title {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
   margin: 0;
-  font-size: var(--text-display-sm);
-  line-height: var(--lh-display-sm);
-}
-
-.logoDesktop {
-  display: none;
-  flex: none;
-}
-
-.logoMobile {
-  flex: none;
-  align-self: flex-start;
-  margin-top: 2px;
-}
-
-@media (min-width: 768px) {
-  .logoDesktop {
-    display: block;
-  }
-  .logoMobile {
-    display: none;
-  }
-  .title {
-    font-size: var(--text-display);
-    line-height: var(--lh-display);
-  }
+  font-size: var(--text-lg);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--tracking-tight);
 }
 
 .caption {

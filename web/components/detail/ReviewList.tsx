@@ -8,7 +8,6 @@ import Skeleton from "../ui/Skeleton";
 import SegmentedControl from "../ui/SegmentedControl";
 import SelectField from "../ui/SelectField";
 import EmptyState from "../ui/EmptyState";
-import { Close } from "../ui/icons";
 import styles from "./ReviewList.module.css";
 
 type Tone = "all" | "positive" | "negative";
@@ -96,8 +95,7 @@ export default function ReviewList({
             Showing reviews about <strong>{(ASPECT_LABELS[aspectFilter] ?? aspectFilter).toLowerCase()}</strong>
           </span>
           <button type="button" className={styles.aspectChipClear} onClick={onClearAspectFilter}>
-            Clear
-            <Close size={10} />
+            Clear ✕
           </button>
         </div>
       )}

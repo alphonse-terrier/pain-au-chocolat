@@ -9,80 +9,53 @@
    Breakpoints (documented here, not tokenized -- custom properties don't
    work inside @media queries): sm 480 / md 768 / lg 1024 / xl 1280 / 2xl 1536. */
 :root {
-  /* ---- Primitive ramps ----
-     "Boulangerie at 7am": crust is the parchment/paper ramp (replaces the
-     old neutral gray), cacao is the brand accent (replaces amber), gold is
-     strictly decorative -- tints and the lamination motif only. Gold must
-     NEVER paint a dot/circle/bar: those shapes are reserved for
-     lib/theme.ts's score gradient, and gold's mid-tones sit close enough
-     to that gradient's orange/yellow stops to be misread as a score. */
-  --crust-0: #ffffff;
-  /* Page background (--surface) -- deliberately warmer/more saturated
-     "kraft paper" than a near-white parchment, a real visible step down
-     from --crust-0 (contrast 1.25:1 vs the old 1.04:1) so raised white
-     cards actually read as sheets of paper on a counter, not boxes on a
-     white page. --crust-40/50 stay closer to their original values (both
-     verified to stay lighter than --crust-100 below) since they tint
-     small UI details ON TOP of white cards (hover rows, sunken wells,
-     chip fills) -- pushing them as warm as --crust-25 would make those
-     look muddy rather than crisp. */
-  --crust-25: #f3e4cd;
-  --crust-40: #faf4e8;
-  --crust-50: #f6efe0;
-  --crust-100: #eddfc8;
-  --crust-200: #dfccac;
-  --crust-300: #c9b48f;
-  --crust-500: #8c7a5e;
-  --crust-600: #6e5d45;
-  --crust-700: #4e3f2c;
-  --crust-900: #241a11;
+  /* ---- Primitive ramps ---- */
+  --gray-0: #ffffff;
+  --gray-25: #fbfaf8;
+  --gray-50: #f6f5f2;
+  --gray-100: #edebe6;
+  --gray-200: #e0ddd6;
+  --gray-300: #cbc7bd;
+  --gray-500: #8a8578;
+  --gray-600: #6b675c;
+  --gray-700: #4a473f;
+  --gray-900: #1c1a16;
 
-  --cacao-50: #f6eee7;
-  --cacao-100: #ebdbcb;
-  --cacao-200: #d6b79a;
-  --cacao-400: #9c5f30;
-  --cacao-500: #7b4522;
-  --cacao-600: #5e3218;
-  --cacao-700: #4a2612;
-  --cacao-900: #2e1608;
+  --amber-50: #fdf6ec;
+  --amber-100: #f8e8cf;
+  --amber-200: #eecfa0;
+  --amber-500: #c17817;
+  --amber-600: #a4650f;
+  --amber-700: #85510b;
 
-  /* Decorative only -- see ban above. */
-  --gold-50: #fef7e8;
-  --gold-100: #fbebc8;
-  --gold-200: #f3d79a;
-  --gold-400: #d9a441;
-  --gold-600: #a97a1c;
-
-  /* ---- Accent roles ----
-     Cacao replaces amber as the brand accent. Unlike #c17817 (~3.5:1,
-     failed AA as text), #7b4522 clears AA on its own (7.4:1 on parchment),
-     so this split is about role clarity, not a contrast workaround. */
-  --accent: var(--cacao-500); /* decorative only: underline, bars, borders, large numerals */
-  --accent-solid: var(--cacao-600); /* filled surfaces carrying inverse text */
-  --accent-hover: var(--cacao-700);
-  --accent-text: var(--cacao-600); /* ~10.4:1 -- any brand text or link */
-  --accent-tint: var(--cacao-50);
-  --accent-tint-2: var(--cacao-100);
-  --accent-ring: rgba(94, 50, 24, 0.4);
+  /* ---- Accent roles (contrast-driven split -- #c17817 is ~3.5:1 on
+     white in both directions, which fails AA for text/fills carrying
+     text) ---- */
+  --accent: var(--amber-500); /* decorative only: underline, bars, borders, large numerals */
+  --accent-solid: var(--amber-600); /* filled surfaces carrying white text */
+  --accent-hover: var(--amber-700);
+  --accent-text: var(--amber-700); /* ~6.5:1 -- any amber text or link */
+  --accent-tint: var(--amber-50);
+  --accent-tint-2: var(--amber-100);
+  --accent-ring: rgba(193, 120, 23, 0.45);
 
   /* ---- Semantic surfaces / text / borders ---- */
-  --surface: var(--crust-25); /* page parchment -- was white */
-  --surface-sunken: var(--crust-50);
-  --surface-raised: var(--crust-0); /* cards/tables/panels float white-on-parchment */
-  --surface-hover: var(--crust-40);
-  --surface-scrim: rgba(36, 26, 17, 0.46);
+  --surface: var(--gray-0);
+  --surface-sunken: var(--gray-50);
+  --surface-raised: var(--gray-0);
+  --surface-hover: var(--gray-25);
+  --surface-scrim: rgba(28, 26, 22, 0.44);
 
-  --border: var(--crust-100);
-  --border-strong: var(--crust-200);
-  --border-control: #9c8358; /* 3.6:1 on parchment/white -- meets 1.4.11 for control outlines */
+  --border: var(--gray-100);
+  --border-strong: var(--gray-200);
 
-  --text: var(--crust-900);
-  --text-secondary: var(--crust-600);
-  --text-tertiary: var(--crust-500); /* decoration-only -- never body text */
-  --text-inverse: #fff9f1; /* warm white -- do not assume this equals #ffffff */
+  --text: var(--gray-900);
+  --text-secondary: #6b675c; /* was #777777 (4.48:1, fails AA) */
+  --text-tertiary: var(--gray-500); /* decoration-only -- never body text */
+  --text-inverse: var(--gray-0);
 
-  --success: #2f6b40; /* UI status only -- deliberately not the score-scale green */
-  --danger: #a8322a; /* UI status only -- deliberately not the score-scale red */
+  --success: #2f6f43; /* UI status only -- deliberately not the score-scale green */
+  --danger: #b3382f; /* UI status only -- deliberately not the score-scale red */
 
   /* ---- Spacing (4px base) ---- */
   --sp-1: 4px;
@@ -96,20 +69,20 @@
   --sp-12: 48px;
   --sp-16: 64px;
 
-  /* ---- Radius (one notch rounder -- the "pastry box" corner) ---- */
-  --r-xs: 5px;
-  --r-sm: 8px;
-  --r-md: 12px;
-  --r-lg: 18px;
-  --r-xl: 26px;
+  /* ---- Radius ---- */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
   --r-full: 999px;
 
-  /* ---- Shadows (chocolate-tinted, deeper on cards/sheet/drawer) ---- */
-  --shadow-xs: 0 1px 2px rgba(58, 34, 14, 0.07);
-  --shadow-sm: 0 1px 2px rgba(58, 34, 14, 0.07), 0 2px 6px rgba(58, 34, 14, 0.06);
-  --shadow-md: 0 2px 4px rgba(58, 34, 14, 0.06), 0 8px 20px rgba(58, 34, 14, 0.1);
-  --shadow-lg: 0 10px 40px rgba(58, 34, 14, 0.16);
-  --shadow-sheet: 0 -10px 40px rgba(58, 34, 14, 0.18);
+  /* ---- Shadows (warm-tinted, not gray) ---- */
+  --shadow-xs: 0 1px 2px rgba(30, 22, 10, 0.06);
+  --shadow-sm: 0 1px 2px rgba(30, 22, 10, 0.06), 0 2px 6px rgba(30, 22, 10, 0.05);
+  --shadow-md: 0 2px 4px rgba(30, 22, 10, 0.05), 0 6px 16px rgba(30, 22, 10, 0.08);
+  --shadow-lg: 0 8px 32px rgba(30, 22, 10, 0.12);
+  --shadow-sheet: 0 -8px 32px rgba(30, 22, 10, 0.16);
   --shadow-focus: 0 0 0 3px var(--accent-ring);
 
   /* ---- Type scale ---- */
@@ -137,24 +110,6 @@
   --tracking-caps: 0.05em;
   --tracking-tight: -0.011em;
 
-  /* ---- Display type (headings/hero numbers only -- never tables, never
-     KPI values, never anything with tabular figures. See .display below.
-     The dense --text-2xs..--text-2xl scale above is untouched.) ---- */
-  --text-display-sm: 22px;
-  --lh-display-sm: 28px;
-  --text-display: 30px;
-  --lh-display: 36px;
-  --text-display-lg: 44px;
-  --lh-display-lg: 46px;
-  --tracking-display: -0.015em;
-
-  /* ---- Brand motif -- pure CSS, no image assets. Used sparingly at a
-     handful of brand moments (header rule, one methodology divider, empty
-     state backdrops) -- never on dense/scan surfaces (tables, filters,
-     review cards, the map, score bars). ---- */
-  --motif-lamination: repeating-linear-gradient(-8deg, rgba(46, 22, 8, 0.35) 0 1px, transparent 1px 7px);
-  --motif-baton-rule: repeating-linear-gradient(90deg, var(--cacao-900) 0 15px, var(--crust-50) 15px 24px);
-
   /* ---- Z-index ---- */
   --z-raised: 10;
   --z-sticky: 20;
@@ -181,7 +136,6 @@
 
   /* ---- Fonts ---- */
   --font-fallback: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --font-display-fallback: Georgia, "Times New Roman", serif;
 }
 
 * {
@@ -227,18 +181,6 @@ table {
 
 .tnum {
   font-variant-numeric: tabular-nums;
-}
-
-/* Headings/hero numbers only -- see --text-display-* above. Fraunces'
-   SOFT/WONK axes give it hand-lettered-shopfront terminals instead of a
-   textbook serif; WONK is dropped locally (font-variation-settings
-   override) wherever a specific heading wants a more sober figure (the
-   score numeral). */
-.display {
-  font-family: var(--font-display, var(--font-display-fallback)), var(--font-display-fallback);
-  font-variation-settings: "SOFT" 40, "WONK" 1;
-  font-weight: 600;
-  letter-spacing: var(--tracking-display);
 }
 
 .caption {
