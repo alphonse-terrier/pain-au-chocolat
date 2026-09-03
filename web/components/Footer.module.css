@@ -22,15 +22,9 @@
 }
 
 @media (max-width: 1023px) {
+  /* Mobile screen space is already tight (map + bottom sheet, filter
+     drawer) -- the disclaimer strip isn't worth the row it takes here. */
   .footer {
-    padding: var(--sp-1) var(--sp-4);
-  }
-
-  .list {
-    justify-content: flex-start;
-  }
-
-  .item {
-    white-space: normal;
+    display: none;
   }
 }
