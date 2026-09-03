@@ -12,9 +12,29 @@
 }
 
 .heading {
+  /* z-index:0, not just position:relative -- relative alone doesn't
+     establish a stacking context, so the ::before's z-index:-1 would
+     otherwise escape to a much higher ancestor and paint behind
+     everything instead of just behind this heading's own text. */
+  position: relative;
+  z-index: 0;
   font-size: var(--text-md);
   font-weight: var(--fw-semibold);
-  margin: 0 0 var(--sp-4);
+  margin: calc(var(--sp-2) * -1) calc(var(--sp-2) * -1) var(--sp-4);
+  padding: var(--sp-2);
+}
+
+/* A motif wash behind the heading only -- the form controls below stay
+   undecorated so they scan cleanly. */
+.heading::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: var(--motif-lamination);
+  mask-image: linear-gradient(to right, #000 0%, transparent 60%);
+  -webkit-mask-image: linear-gradient(to right, #000 0%, transparent 60%);
+  pointer-events: none;
 }
 
 .form {
@@ -89,10 +109,6 @@
 .locateBtn {
   width: 100%;
   justify-content: center;
-}
-
-.locateIcon {
-  font-size: var(--text-sm);
 }
 
 .caption {

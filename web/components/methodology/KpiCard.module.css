@@ -10,14 +10,6 @@
   min-width: 0;
 }
 
-.icon {
-  position: absolute;
-  top: var(--sp-2);
-  right: var(--sp-3);
-  font-size: 20px;
-  opacity: 0.5;
-}
-
 .label {
   font-size: var(--text-2xs);
   color: var(--text-secondary);

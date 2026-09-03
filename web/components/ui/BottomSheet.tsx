@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Close } from "./icons";
 import styles from "./BottomSheet.module.css";
 
 export type SnapPoint = "peek" | "half" | "full";
@@ -162,7 +163,7 @@ export default function BottomSheet({
         <div className={styles.headerRow}>
           <div className={styles.headerContent}>{header}</div>
           <button type="button" className={styles.closeBtn} aria-label="Close" onClick={onClose}>
-            ×
+            <Close size={16} />
           </button>
         </div>
       </div>

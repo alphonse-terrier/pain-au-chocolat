@@ -59,6 +59,16 @@
   flex: none;
 }
 
+.chevronPair {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  opacity: 0.4;
+}
+.chevronPair svg {
+  margin: -2px 0;
+}
+
 .wrap th.active {
   color: var(--text);
 }

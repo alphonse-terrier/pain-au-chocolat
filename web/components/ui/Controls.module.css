@@ -140,7 +140,7 @@
   height: 18px;
   border-radius: 50%;
   background: var(--surface);
-  border: 2px solid var(--gray-900);
+  border: 2px solid var(--text);
   box-shadow: var(--shadow-sm);
   cursor: pointer;
 }
@@ -150,7 +150,7 @@
   height: 18px;
   border-radius: 50%;
   background: var(--surface);
-  border: 2px solid var(--gray-900);
+  border: 2px solid var(--text);
   box-shadow: var(--shadow-sm);
   cursor: pointer;
 }

@@ -10,6 +10,7 @@ import Alert from "../ui/Alert";
 import EmptyState from "../ui/EmptyState";
 import SegmentedControl from "../ui/SegmentedControl";
 import Skeleton from "../ui/Skeleton";
+import { Pin } from "../ui/icons";
 import NearbyResultCard from "./NearbyResultCard";
 import styles from "./NearbyTab.module.css";
 
@@ -95,15 +96,7 @@ export default function NearbyTab({
         <form className={styles.form} onSubmit={handleSubmit}>
           <div className={styles.addressRow}>
             <div className={styles.addressField}>
-              <svg className={styles.pinIcon} width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
-                <path
-                  d="M8 15s5-4.5 5-8.5A5 5 0 0 0 3 6.5C3 10.5 8 15 8 15z"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.3"
-                />
-                <circle cx="8" cy="6.5" r="1.8" fill="currentColor" />
-              </svg>
+              <Pin size={14} className={styles.pinIcon} />
               <label htmlFor="nearby-address" className="visually-hidden">
                 Address
               </label>
@@ -141,11 +134,7 @@ export default function NearbyTab({
           className={styles.locateBtn}
           loading={locating}
           onClick={handleUseLocation}
-          iconLeft={
-            <span aria-hidden="true" className={styles.locateIcon}>
-              📍
-            </span>
-          }
+          iconLeft={<Pin size={13} />}
         >
           Use my location
         </Button>
@@ -155,7 +144,8 @@ export default function NearbyTab({
       {error && <Alert tone="error">⚠️ {error}</Alert>}
       {geo && (
         <div className={styles.geoChip}>
-          📍 {geo.formatted_address}
+          <Pin size={12} />
+          {geo.formatted_address}
           <button type="button" className={styles.changeBtn} onClick={() => document.getElementById("nearby-address")?.focus()}>
             Change
           </button>

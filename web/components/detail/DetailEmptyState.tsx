@@ -1,4 +1,5 @@
 import type { Place } from "@/lib/types";
+import ShopWindow from "../ui/ShopWindow";
 import ScoreLegend from "../ui/ScoreLegend";
 import styles from "./DetailEmptyState.module.css";
 
@@ -6,7 +7,8 @@ import styles from "./DetailEmptyState.module.css";
  * biggest wasted space in the app used to be one grey sentence here.
  * Explains the map's color encoding (the only place it's explained) and
  * offers the top-scored places in the current filtered view as a quick
- * way in. */
+ * way in. The mark now does the pointing that the 👉 used to, so the
+ * emoji is gone -- this is the app's single largest brand moment. */
 export default function DetailEmptyState({
   topPlaces,
   onSelect,
@@ -16,7 +18,10 @@ export default function DetailEmptyState({
 }) {
   return (
     <div className={styles.wrap}>
-      <p className={styles.instruction}>👉 Poke a marker on the map to meet its reviews.</p>
+      <div className={styles.hero}>
+        <ShopWindow width={220} className={styles.heroLogo} />
+        <p className={styles.instruction}>Poke a marker on the map to meet its reviews.</p>
+      </div>
       <ScoreLegend />
       {topPlaces.length > 0 && (
         <div className={styles.topList}>

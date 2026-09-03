@@ -2,10 +2,41 @@
   padding: var(--sp-2);
 }
 
+.hero {
+  /* z-index:0, not just position:relative -- relative alone doesn't
+     establish a stacking context, so the ::before's z-index:-1 would
+     otherwise escape to a much higher ancestor and paint behind
+     everything instead of just behind this hero's own content. */
+  position: relative;
+  z-index: 0;
+  text-align: center;
+  padding: var(--sp-6) var(--sp-2) var(--sp-4);
+  margin-bottom: var(--sp-2);
+}
+
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: var(--motif-lamination);
+  mask-image: radial-gradient(ellipse 65% 70% at 50% 40%, #000 0%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 65% 70% at 50% 40%, #000 0%, transparent 100%);
+  pointer-events: none;
+}
+
+.heroLogo {
+  /* A full illustrated scene has finer linework than the plain mark did --
+     needs more opacity to stay legible, still muted enough not to compete
+     with the instruction text and the list below. */
+  opacity: 0.6;
+  margin-bottom: var(--sp-3);
+}
+
 .instruction {
   font-size: var(--text-sm);
   color: var(--text-secondary);
-  margin: 0 0 var(--sp-2);
+  margin: 0;
 }
 
 .topList {

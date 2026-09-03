@@ -7,6 +7,7 @@ import { formatPercent, formatStars, scoreToColor } from "@/lib/theme";
 import { formatInt } from "@/lib/format";
 import ScoreBar from "./ScoreBar";
 import ConfidencePill from "../detail/ConfidencePill";
+import { Chevron } from "../ui/icons";
 import styles from "./RankingTable.module.css";
 
 export default function RankingTable({
@@ -78,20 +79,14 @@ export default function RankingTable({
               >
                 <button type="button" className={styles.sortBtn} onClick={() => onSort(c.key)}>
                   {c.label}
-                  <svg className={styles.chevron} width="8" height="10" viewBox="0 0 8 10" aria-hidden="true">
-                    {c.key === sort ? (
-                      dir === "asc" ? (
-                        <path d="M4 0l4 5H0z" fill="currentColor" />
-                      ) : (
-                        <path d="M4 10L0 5h8z" fill="currentColor" />
-                      )
-                    ) : (
-                      <>
-                        <path d="M4 0l3 3.5H1z" fill="currentColor" opacity="0.4" />
-                        <path d="M4 10l-3-3.5h6z" fill="currentColor" opacity="0.4" />
-                      </>
-                    )}
-                  </svg>
+                  {c.key === sort ? (
+                    <Chevron size={10} direction={dir === "asc" ? "up" : "down"} className={styles.chevron} />
+                  ) : (
+                    <span className={styles.chevronPair}>
+                      <Chevron size={10} direction="up" />
+                      <Chevron size={10} direction="down" />
+                    </span>
+                  )}
                 </button>
               </th>
             ))}

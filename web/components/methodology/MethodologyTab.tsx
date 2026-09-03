@@ -7,22 +7,18 @@ import styles from "./MethodologyTab.module.css";
 
 const STEPS = [
   {
-    icon: "🔍",
     title: "Detection",
-    body: "Reviews mentioning “pain au chocolat” or “chocolatine” (typos included) are found by keyword.",
+    body: 'Reviews mentioning "pain au chocolat" or "chocolatine" (typos included) are found by keyword.',
   },
   {
-    icon: "⚖️",
     title: "Classification",
     body: "A language model checks whether the mention is really about taste, not just price, and gives a quick yes/no on whether the reviewer liked it.",
   },
   {
-    icon: "🤝",
     title: "Weighting",
     body: "Each mention is weighted by the reviewer's credibility, how recent it is, how precise its criticism is, and whether it describes a one-off slip or a lasting pattern.",
   },
   {
-    icon: "🏆",
     title: "Aggregation",
     body: "The score blends weighted sentiment with the share of positive mentions, smoothed toward the Paris average for places with very few reviews (never toward their own Google rating). The bakery's overall Google rating is then folded in at just 20%, a light nudge rather than a second vote.",
   },
@@ -33,7 +29,7 @@ export default function MethodologyTab({ meta }: { meta: PlacesMeta }) {
 
   return (
     <div className={styles.page}>
-      <h2 className={styles.pageHeading}>How the score works</h2>
+      <h2 className={`${styles.pageHeading} display`}>How the score works</h2>
       <p className={styles.introText}>
         Scored from the Google reviews that actually talk about the pastry, not from the bakery&apos;s overall
         rating.
@@ -43,14 +39,14 @@ export default function MethodologyTab({ meta }: { meta: PlacesMeta }) {
         <ol className={styles.steps}>
           {STEPS.map((step, i) => (
             <li key={step.title} className={styles.step}>
-              <span className={styles.stepIcon} aria-hidden="true">
-                {step.icon}
+              {/* A numbered "baton chip" -- a chocolate baton standing on
+                  end -- rather than a generic magnifier/scales/trophy
+                  emoji per step. */}
+              <span className={styles.stepNumber} aria-hidden="true">
+                {i + 1}
               </span>
               <div>
-                <h3 className={styles.stepTitle}>
-                  <span className={styles.stepNumber}>{i + 1}</span>
-                  {step.title}
-                </h3>
+                <h3 className={styles.stepTitle}>{step.title}</h3>
                 <p className={styles.stepBody}>{step.body}</p>
               </div>
             </li>
@@ -59,16 +55,10 @@ export default function MethodologyTab({ meta }: { meta: PlacesMeta }) {
 
         <aside className={styles.sidebar}>
           <div className={styles.kpis}>
-            <KpiCard value={formatInt(meta.n_places)} label="Bakeries" icon="🥐" />
-            <KpiCard
-              value={avgScore}
-              unit="/10"
-              label="Avg. score"
-              icon="⭐"
-              accentColor={scoreToColor(meta.avg_score)}
-            />
-            <KpiCard value={`${meta.coverage_pct.toFixed(0)}`} unit="%" label="Scored" icon="📊" />
-            <KpiCard value={formatInt(meta.n_reviews)} label="Reviews" icon="💬" />
+            <KpiCard value={formatInt(meta.n_places)} label="Bakeries" />
+            <KpiCard value={avgScore} unit="/10" label="Avg. score" accentColor={scoreToColor(meta.avg_score)} />
+            <KpiCard value={`${meta.coverage_pct.toFixed(0)}`} unit="%" label="Scored" />
+            <KpiCard value={formatInt(meta.n_reviews)} label="Reviews" />
           </div>
           <p className={styles.lastReview}>Last review collected: {formatDate(meta.last_review_at)}</p>
 

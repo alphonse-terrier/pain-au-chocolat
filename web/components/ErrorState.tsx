@@ -10,7 +10,7 @@ export default function ErrorState({ message, onRetry }: { message: string; onRe
       <div className={styles.icon} aria-hidden="true">
         🥐💥
       </div>
-      <p className={styles.title}>The croissant hit the fan</p>
+      <p className={`${styles.title} display`}>The croissant hit the fan</p>
       <p className={styles.body}>
         {offline
           ? "Looks like you're offline. Reconnect and we'll pick up right where we left off."

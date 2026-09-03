@@ -19,6 +19,7 @@
 }
 
 .handleArea {
+  position: relative;
   flex: none;
   /* Generous touch target -- a fingertip on a 4px grabber bar is a
      precision task; the whole strip (well past the visible bar) grabs
@@ -27,6 +28,22 @@
   min-height: 44px;
   touch-action: none;
   cursor: grab;
+}
+
+/* A thin echo of the header's brand rule along the sheet's top edge --
+   the mobile detail sheet is its own brand moment, not just a utility
+   panel. Rounded to match the sheet's own top corners so it doesn't
+   overhang them. */
+.handleArea::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  background-image: var(--motif-baton-rule);
+  opacity: 0.4;
 }
 
 .grabber {
@@ -50,13 +67,14 @@
 
 .closeBtn {
   flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: none;
-  font-size: 24px;
-  line-height: 1;
   color: var(--text-secondary);
   cursor: pointer;
-  padding: var(--sp-1);
+  padding: var(--sp-2);
 }
 
 .body {
