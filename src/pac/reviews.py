@@ -18,7 +18,7 @@ from playwright.sync_api import Browser, TimeoutError as PlaywrightTimeoutError
 
 from pac.config import DEFAULT_USER_AGENT, RAW_REVIEWS_DIR
 from pac.parse import parse_ugc_posts_payload
-from pac.protocol import decode_batchexecute
+from pac.protocol import decode_batchexecute, is_ugc_posts_response
 
 PLACE_URL_TEMPLATE = "https://www.google.com/maps/place/?q=place_id:{place_id}"
 MAX_SCROLL_ROUNDS = 400  # garde-fou dur, indépendant de max_reviews_per_place
@@ -38,12 +38,21 @@ def _accept_consent(page) -> None:
 
 
 def _open_reviews_tab(page) -> bool:
+    # `.count()` is a synchronous, non-waiting check -- it returns 0
+    # immediately if the tab bar hasn't finished rendering yet, which is a
+    # real race (confirmed live: the exact same page reliably has the
+    # "Avis" tab a few hundred ms later). That race is almost certainly
+    # what silently truncated ~130 crawls to a handful of reviews each in
+    # one session (they "succeeded" at finding SOME reviews tab/content on
+    # a later attempt, or via a fallback timing that produced less scroll
+    # time, rather than cleanly failing). `.wait_for(state="visible")`
+    # actively polls up to its timeout instead of sampling once.
     for label in ("avis", "reviews"):
         try:
-            tab = page.get_by_role("tab", name=label, exact=False)
-            if tab.count() > 0:
-                tab.first.click(timeout=5000)
-                return True
+            tab = page.get_by_role("tab", name=label, exact=False).first
+            tab.wait_for(state="visible", timeout=8000)
+            tab.click(timeout=5000)
+            return True
         except Exception:
             continue
     return False
@@ -88,7 +97,7 @@ def crawl_place_reviews(
         except Exception:
             return
         for rpc_id, payload in decode_batchexecute(text):
-            if rpc_id != "/MapsUgcPostService.ListUgcPosts":
+            if not is_ugc_posts_response(rpc_id):
                 continue
             reviews, _ = parse_ugc_posts_payload(payload)
             new = 0
@@ -132,6 +141,16 @@ def crawl_place_reviews(
                          "(probablement un lieu sans aucun avis, ou sélecteur changé)",
             }
         page.wait_for_timeout(2500)
+
+        # mouse.wheel() dispatches at the CURRENT cursor position, which
+        # after just clicking the reviews tab sits up near the tab bar --
+        # not over the scrollable review list below it. Confirmed live:
+        # without this, wheel events land outside the list, nothing lazy-
+        # loads, and the stall-detection below gives up after only the
+        # first natural batch (~5-10 reviews) regardless of how many the
+        # place actually has. This coordinate is inside the left detail
+        # panel for the 1400x1000 viewport created above.
+        page.mouse.move(300, 500)
 
         for _ in range(MAX_SCROLL_ROUNDS):
             if max_reviews and len(collected) >= max_reviews:

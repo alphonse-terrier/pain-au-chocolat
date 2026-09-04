@@ -120,4 +120,13 @@ def decode_batchexecute(raw_body: str) -> list:
 
 
 def is_ugc_posts_response(rpc_id: str) -> bool:
-    return rpc_id == "/MapsUgcPostService.ListUgcPosts"
+    # Google's wrb.fr envelope has been observed reporting BOTH the long
+    # service name (tests/fixtures/listugcposts_page1_real.txt, an earlier
+    # real capture) and the short batchexecute rpcid "qv9Egd" (the same
+    # code already visible in the request URL, cf. module docstring;
+    # confirmed live -- some responses never carry the long name at all).
+    # Checking only the long name silently matched nothing on whichever
+    # responses use the short form, which is almost certainly why a batch
+    # of crawls got truncated to a handful of reviews each before the
+    # scroll loop's stall-detection gave up.
+    return rpc_id in ("/MapsUgcPostService.ListUgcPosts", "qv9Egd")
